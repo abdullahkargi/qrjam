@@ -6,6 +6,7 @@ type Song = {
   id: number;
   name: string;
   votes: number;
+  status: string;
 };
 
 export default function Home() {
