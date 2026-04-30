@@ -47,8 +47,28 @@ export default function AdminPage() {
     await supabase.from("songs").delete().eq("id", id);
     fetchSongs();
   };
+const resetNight = async () => {
+  const confirmReset = confirm("Tüm şarkılar silinsin mi?");
 
+  if (!confirmReset) return;
+
+  await supabase.from("songs").delete().neq("id", 0);
+
+  fetchSongs();
+};
   return (
+    <button
+  onClick={resetNight}
+  style={{
+    marginTop: 20,
+    padding: 10,
+    backgroundColor: "red",
+    color: "white",
+    borderRadius: 8,
+  }}
+>
+  🔥 Geceyi Sıfırla
+</button>
     <main style={{ padding: 40 }}>
       <h1>🎧 QRJam DJ Panel</h1>
       <p>Gelen şarkı isteklerini buradan yönet.</p>
