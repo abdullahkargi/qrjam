@@ -56,51 +56,51 @@ const resetNight = async () => {
 
   fetchSongs();
 };
-  return (
+return (
+  <main style={{ padding: 40 }}>
+    <h1>🎧 QRJam DJ Panel</h1>
+    <p>Gelen şarkı isteklerini buradan yönet.</p>
+
     <button
-  onClick={resetNight}
-  style={{
-    marginTop: 20,
-    padding: 10,
-    backgroundColor: "red",
-    color: "white",
-    borderRadius: 8,
-  }}
->
-  🔥 Geceyi Sıfırla
-</button>
-    <main style={{ padding: 40 }}>
-      <h1>🎧 QRJam DJ Panel</h1>
-      <p>Gelen şarkı isteklerini buradan yönet.</p>
+      onClick={resetNight}
+      style={{
+        marginTop: 20,
+        padding: 10,
+        backgroundColor: "red",
+        color: "white",
+        borderRadius: 8,
+      }}
+    >
+      🔥 Geceyi Sıfırla
+    </button>
 
-      <div style={{ marginTop: 30 }}>
-        {songs.map((song) => (
-          <div
-            key={song.id}
-            style={{
-              padding: 15,
-              marginBottom: 12,
-              border: "1px solid #333",
-              borderRadius: 10,
-            }}
+    <div style={{ marginTop: 30 }}>
+      {songs.map((song) => (
+        <div
+          key={song.id}
+          style={{
+            padding: 15,
+            marginBottom: 12,
+            border: "1px solid #333",
+            borderRadius: 10,
+          }}
+        >
+          <strong>🎵 {song.name}</strong>
+          <p>👍 Oy: {song.votes}</p>
+          <p>Durum: {song.status}</p>
+
+          <button onClick={() => markPlayed(song.id)}>
+            Çalındı
+          </button>
+
+          <button
+            onClick={() => deleteSong(song.id)}
+            style={{ marginLeft: 10 }}
           >
-            <strong>🎵 {song.name}</strong>
-            <p>👍 Oy: {song.votes}</p>
-            <p>Durum: {song.status}</p>
-
-            <button onClick={() => markPlayed(song.id)}>
-              Çalındı
-            </button>
-
-            <button
-              onClick={() => deleteSong(song.id)}
-              style={{ marginLeft: 10 }}
-            >
-              Sil
-            </button>
-          </div>
-        ))}
-      </div>
-    </main>
-  );
-}
+            Sil
+          </button>
+        </div>
+      ))}
+    </div>
+  </main>
+);
