@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 
 const PASSWORD = "qrjam2026";
@@ -10,12 +10,17 @@ type Song = {
   votes: number;
   status: string;
   created_at?: string;
+  played_at?: string;
 };
 
 export default function AdminPage() {
   const [songs, setSongs] = useState<Song[]>([]);
+  const [nowPlaying, setNowPlaying] = useState<Song | null>(null);
   const [password, setPassword] = useState("");
   const [authorized, setAuthorized] = useState(false);
+  const [newSongId, setNewSongId] = useState<number | null>(null);
+
+  const previousIds = useRef<number[]>([]);
 
   const fetchSongs = async () => {
     const { data, error } = await supabase
@@ -28,7 +33,31 @@ export default function AdminPage() {
       return;
     }
 
-    if (data) setSongs(data);
+    if (data) {
+      const currentIds = data.map((song) => song.id);
+      const newItem = data.find(
+        (song) =>
+          !previousIds.current.includes(song.id) && song.status === "pending"
+      );
+
+      if (previousIds.current.length > 0 && newItem) {
+        setNewSongId(newItem.id);
+        setTimeout(() => setNewSongId(null), 3000);
+      }
+
+      previousIds.current = currentIds;
+      setSongs(data);
+
+      const latestPlayed = data
+        .filter((s) => s.status === "played" && s.played_at)
+        .sort(
+          (a, b) =>
+            new Date(b.played_at || "").getTime() -
+            new Date(a.played_at || "").getTime()
+        )[0];
+
+      setNowPlaying(latestPlayed || null);
+    }
   };
 
   useEffect(() => {
@@ -39,9 +68,7 @@ export default function AdminPage() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "songs" },
-        () => {
-          fetchSongs();
-        }
+        () => fetchSongs()
       )
       .subscribe();
 
@@ -58,8 +85,29 @@ export default function AdminPage() {
     }
   };
 
-  const markPlayed = async (id: number) => {
-    await supabase.from("songs").update({ status: "played" }).eq("id", id);
+  const markPlayed = async (song: Song) => {
+    const playedAt = new Date().toISOString();
+
+    const updatedSong: Song = {
+      ...song,
+      status: "played",
+      played_at: playedAt,
+    };
+
+    setNowPlaying(updatedSong);
+
+    setSongs((currentSongs) =>
+      currentSongs.map((item) => (item.id === song.id ? updatedSong : item))
+    );
+
+    await supabase
+      .from("songs")
+      .update({
+        status: "played",
+        played_at: playedAt,
+      })
+      .eq("id", song.id);
+
     fetchSongs();
   };
 
@@ -73,6 +121,8 @@ export default function AdminPage() {
     if (!confirmReset) return;
 
     await supabase.from("songs").delete().neq("id", 0);
+    setSongs([]);
+    setNowPlaying(null);
     fetchSongs();
   };
 
@@ -153,9 +203,6 @@ export default function AdminPage() {
   const pendingSongs = songs
     .filter((s) => s.status === "pending")
     .sort((a, b) => b.votes - a.votes);
-
-  const playedSongs = songs.filter((s) => s.status === "played");
-  const nowPlaying = playedSongs.sort((a, b) => b.id - a.id)[0];
 
   return (
     <main
@@ -242,70 +289,85 @@ export default function AdminPage() {
           <p style={{ color: "#777" }}>Bekleyen istek yok.</p>
         )}
 
-        {pendingSongs.map((song, index) => (
-          <div
-            key={song.id}
-            style={{
-              marginTop: 14,
-              padding: index < 3 ? 22 : 16,
-              fontSize: index < 3 ? 22 : 16,
-              background:
-                index === 0
+        {pendingSongs.map((song, index) => {
+          const isNew = song.id === newSongId;
+
+          return (
+            <div
+              key={song.id}
+              style={{
+                marginTop: 14,
+                padding: index < 3 ? 22 : 16,
+                fontSize: index < 3 ? 22 : 16,
+                background: isNew
+                  ? "linear-gradient(90deg,#7c3aed,#16a34a)"
+                  : index === 0
                   ? "linear-gradient(90deg,#231942,#151515)"
                   : "#151515",
-              borderRadius: 16,
-              border: index === 0 ? "1px solid #7c3aed" : "1px solid #2a2a2a",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 15,
-              boxShadow:
-                index === 0 ? "0 0 22px rgba(124,58,237,0.35)" : "none",
-            }}
-          >
-            <div>
-              <strong>
-                {index + 1}. 🎵 {song.name}
-              </strong>
-              <div style={{ color: "#aaa", marginTop: 6 }}>
-                👍 {song.votes} oy
+                borderRadius: 16,
+                border: isNew
+                  ? "2px solid #22c55e"
+                  : index === 0
+                  ? "1px solid #7c3aed"
+                  : "1px solid #2a2a2a",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 15,
+                boxShadow: isNew
+                  ? "0 0 35px rgba(34,197,94,0.9)"
+                  : index === 0
+                  ? "0 0 22px rgba(124,58,237,0.35)"
+                  : "none",
+                transform: isNew ? "scale(1.03)" : "scale(1)",
+                transition: "all 0.3s ease",
+              }}
+            >
+              <div>
+                <strong>
+                  {isNew ? "🆕 " : ""}
+                  {index + 1}. 🎵 {song.name}
+                </strong>
+                <div style={{ color: "#aaa", marginTop: 6 }}>
+                  👍 {song.votes} oy
+                </div>
+              </div>
+
+              <div>
+                <button
+                  onClick={() => markPlayed(song)}
+                  style={{
+                    padding: "10px 15px",
+                    background: "linear-gradient(90deg,#16a34a,#22c55e)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 10,
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                  }}
+                >
+                  Çal
+                </button>
+
+                <button
+                  onClick={() => deleteSong(song.id)}
+                  style={{
+                    marginLeft: 10,
+                    padding: "10px 15px",
+                    background: "linear-gradient(90deg,#dc2626,#ef4444)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 10,
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                  }}
+                >
+                  Sil
+                </button>
               </div>
             </div>
-
-            <div>
-              <button
-                onClick={() => markPlayed(song.id)}
-                style={{
-                  padding: "10px 15px",
-                  background: "linear-gradient(90deg,#16a34a,#22c55e)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 10,
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                }}
-              >
-                Çal
-              </button>
-
-              <button
-                onClick={() => deleteSong(song.id)}
-                style={{
-                  marginLeft: 10,
-                  padding: "10px 15px",
-                  background: "linear-gradient(90deg,#dc2626,#ef4444)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 10,
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                }}
-              >
-                Sil
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </section>
     </main>
   );
