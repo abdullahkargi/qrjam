@@ -7,11 +7,16 @@ type Song = {
   name: string;
   votes: number;
   status: string;
-  created_at?: string;
-  played_at?: string;
 };
 
 const COOLDOWN_MS = 3 * 60 * 1000;
+
+function getLinkInfo(text: string) {
+  if (!text.startsWith("http")) return null;
+  if (text.includes("youtube.com") || text.includes("youtu.be")) return { label: "YouTube", emoji: "▶️" };
+  if (text.includes("spotify.com")) return { label: "Spotify", emoji: "🟢" };
+  return { label: "Link", emoji: "🔗" };
+}
 
 export default function Home() {
   const [input, setInput] = useState("");
@@ -20,29 +25,21 @@ export default function Home() {
   const [cooldownLeft, setCooldownLeft] = useState(0);
 
   const fetchSongs = async () => {
-    const { data, error } = await supabase.from("songs").select("*");
-
-    if (error) {
-      console.log("HATA:", error);
-      return;
-    }
-
+    const { data } = await supabase.from("songs").select("*");
     if (data) {
-      const sorted = data.sort((a, b) => {
-        if (a.status === "pending" && b.status === "played") return -1;
-        if (a.status === "played" && b.status === "pending") return 1;
-        return b.votes - a.votes;
-      });
-
-      setSongs(sorted);
+      setSongs(
+        data.sort((a, b) => {
+          if (a.status === "pending" && b.status === "played") return -1;
+          if (a.status === "played" && b.status === "pending") return 1;
+          return b.votes - a.votes;
+        })
+      );
     }
   };
 
   const updateCooldown = () => {
-    const lastRequest = Number(localStorage.getItem("lastRequestTime") || "0");
-    const now = Date.now();
-    const left = Math.max(0, COOLDOWN_MS - (now - lastRequest));
-    setCooldownLeft(left);
+    const last = Number(localStorage.getItem("lastRequestTime") || "0");
+    setCooldownLeft(Math.max(0, COOLDOWN_MS - (Date.now() - last)));
   };
 
   useEffect(() => {
@@ -53,11 +50,7 @@ export default function Home() {
 
     const channel = supabase
       .channel("songs-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "songs" },
-        () => fetchSongs()
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "songs" }, fetchSongs)
       .subscribe();
 
     return () => {
@@ -69,15 +62,14 @@ export default function Home() {
   const addSong = async () => {
     const cleanInput = input.trim();
 
-    if (cleanInput === "") {
+    if (!cleanInput) {
       setMessage("Önce şarkı adı veya link yaz 🎵");
       return;
     }
 
-    const lastRequest = Number(localStorage.getItem("lastRequestTime") || "0");
-    const now = Date.now();
+    const last = Number(localStorage.getItem("lastRequestTime") || "0");
 
-    if (now - lastRequest < COOLDOWN_MS) {
+    if (Date.now() - last < COOLDOWN_MS) {
       setMessage("Yeni şarkı göndermek için biraz bekle ⏳");
       return;
     }
@@ -89,25 +81,13 @@ export default function Home() {
       .maybeSingle();
 
     if (existing) {
-      setMessage("Bu şarkı zaten listede. Yanındaki 👍 butonuyla oy verebilirsin.");
+      setMessage("Bu şarkı zaten listede. 👍 ile oy verebilirsin.");
       return;
     }
 
-    const { error } = await supabase.from("songs").insert([
-      {
-        name: cleanInput,
-        votes: 1,
-        status: "pending",
-      },
-    ]);
+    await supabase.from("songs").insert([{ name: cleanInput, votes: 1, status: "pending" }]);
 
-    if (error) {
-      console.log("EKLEME HATASI:", error);
-      setMessage("Bir hata oldu, tekrar dene.");
-      return;
-    }
-
-    localStorage.setItem("lastRequestTime", String(now));
+    localStorage.setItem("lastRequestTime", String(Date.now()));
     setMessage("Şarkın sıraya alındı 🎧");
     setInput("");
     updateCooldown();
@@ -122,16 +102,7 @@ export default function Home() {
       return;
     }
 
-    const { error } = await supabase
-      .from("songs")
-      .update({ votes: song.votes + 1 })
-      .eq("id", song.id);
-
-    if (error) {
-      console.log("OY HATASI:", error);
-      setMessage("Oy verilirken hata oldu.");
-      return;
-    }
+    await supabase.from("songs").update({ votes: song.votes + 1 }).eq("id", song.id);
 
     localStorage.setItem("votedSongs", JSON.stringify([...votedSongs, song.id]));
     setMessage("Oyun eklendi 🔥");
@@ -147,118 +118,147 @@ export default function Home() {
       style={{
         minHeight: "100vh",
         background:
-          "radial-gradient(circle at top, rgba(124,58,237,0.35), transparent 35%), #050505",
+          "radial-gradient(circle at top, rgba(255,0,204,0.25), transparent 35%), radial-gradient(circle at bottom, rgba(124,58,237,0.35), transparent 40%), #050505",
         color: "white",
-        padding: 30,
+        padding: 24,
         textAlign: "center",
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <h1
-        style={{
-          fontSize: 44,
-          marginBottom: 5,
-          background: "linear-gradient(90deg,#ff00cc,#7c3aed,#22c55e)",
-          WebkitBackgroundClip: "text",
-          color: "transparent",
-        }}
-      >
-        🎧 QRJam
-      </h1>
+      <div style={{ maxWidth: 520, margin: "0 auto" }}>
+        <h1
+          style={{
+            fontSize: 46,
+            background: "linear-gradient(90deg,#ff00cc,#7c3aed,#22c55e)",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+            marginBottom: 4,
+          }}
+        >
+          🎧 DJ Larry Laffer
+        </h1>
 
-      <p style={{ color: "#aaa" }}>Şarkını gönder, geceye yön ver.</p>
-
-      <input
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Şarkı adı veya link"
-        style={{
-          padding: 14,
-          marginTop: 25,
-          width: "90%",
-          maxWidth: 420,
-          borderRadius: 12,
-          border: "1px solid #333",
-          background: "#111",
-          color: "white",
-          outline: "none",
-        }}
-      />
-
-      <br />
-
-      <button
-        onClick={addSong}
-        disabled={cooldownLeft > 0}
-        style={{
-          marginTop: 18,
-          padding: 13,
-          width: "90%",
-          maxWidth: 420,
-          borderRadius: 12,
-          border: "none",
-          background:
-            cooldownLeft > 0
-              ? "#333"
-              : "linear-gradient(90deg,#7c3aed,#6d28d9)",
-          color: "white",
-          fontWeight: "bold",
-          cursor: cooldownLeft > 0 ? "not-allowed" : "pointer",
-        }}
-      >
-        {cooldownLeft > 0
-          ? `Bekle: ${minutes}:${seconds.toString().padStart(2, "0")}`
-          : "Gönder"}
-      </button>
-
-      {message && (
-        <p style={{ marginTop: 18, color: "#22c55e", fontWeight: "bold" }}>
-          {message}
+        <p style={{ color: "#bbb", fontSize: 16 }}>
+          Şarkını gönder, kalabalık oylasın, geceyi birlikte yönetelim.
         </p>
-      )}
 
-      <div style={{ marginTop: 40 }}>
-        <h2>İstekler</h2>
-
-        {songs.length === 0 && <p style={{ color: "#777" }}>Henüz istek yok.</p>}
-
-        {songs.map((song) => (
-          <div
-            key={song.id}
+        <div
+          style={{
+            marginTop: 28,
+            padding: 20,
+            background: "rgba(17,17,17,0.9)",
+            border: "1px solid #333",
+            borderRadius: 20,
+            boxShadow: "0 0 30px rgba(124,58,237,0.25)",
+          }}
+        >
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Şarkı adı veya YouTube / Spotify linki"
             style={{
-              marginTop: 12,
               padding: 15,
+              width: "100%",
               borderRadius: 14,
-              background: "#111",
               border: "1px solid #333",
+              background: "#050505",
+              color: "white",
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
+
+          <button
+            onClick={addSong}
+            disabled={cooldownLeft > 0}
+            style={{
+              marginTop: 14,
+              padding: 15,
+              width: "100%",
+              borderRadius: 14,
+              border: "none",
+              background:
+                cooldownLeft > 0
+                  ? "#333"
+                  : "linear-gradient(90deg,#7c3aed,#22c55e)",
+              color: "white",
+              fontWeight: "bold",
+              cursor: cooldownLeft > 0 ? "not-allowed" : "pointer",
+              fontSize: 16,
             }}
           >
-            <div>
-              🎵 {song.name}
-              {song.status === "played" && <span> ✅ Çalındı</span>}
-            </div>
+            {cooldownLeft > 0
+              ? `Tekrar göndermek için bekle: ${minutes}:${seconds.toString().padStart(2, "0")}`
+              : "Şarkı Gönder"}
+          </button>
 
-            <button
-              onClick={() => voteSong(song)}
-              disabled={song.status === "played"}
-              style={{
-                marginTop: 10,
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: "none",
-                background:
-                  song.status === "played"
-                    ? "#333"
-                    : "linear-gradient(90deg,#16a34a,#22c55e)",
-                color: "white",
-                cursor: song.status === "played" ? "not-allowed" : "pointer",
-                fontWeight: "bold",
-              }}
-            >
-              👍 {song.votes}
-            </button>
-          </div>
-        ))}
+          {message && (
+            <p style={{ marginTop: 14, color: "#22c55e", fontWeight: "bold" }}>
+              {message}
+            </p>
+          )}
+        </div>
+
+        <div style={{ marginTop: 34 }}>
+          <h2>🔥 Canlı İstekler</h2>
+
+          {songs.length === 0 && <p style={{ color: "#777" }}>Henüz istek yok.</p>}
+
+          {songs.map((song, index) => {
+            const linkInfo = getLinkInfo(song.name);
+
+            return (
+              <div
+                key={song.id}
+                style={{
+                  marginTop: 12,
+                  padding: 16,
+                  borderRadius: 16,
+                  background:
+                    song.status === "played"
+                      ? "#0b0b0b"
+                      : index === 0
+                      ? "linear-gradient(90deg,#231942,#111)"
+                      : "#111",
+                  border: index === 0 ? "1px solid #7c3aed" : "1px solid #333",
+                  opacity: song.status === "played" ? 0.55 : 1,
+                }}
+              >
+                <div style={{ fontWeight: "bold" }}>
+                  {linkInfo ? (
+                    <a href={song.name} target="_blank" rel="noopener noreferrer" style={{ color: "white" }}>
+                      {linkInfo.emoji} {linkInfo.label} isteği
+                    </a>
+                  ) : (
+                    <>🎵 {song.name}</>
+                  )}
+
+                  {song.status === "played" && <span> ✅ Çalındı</span>}
+                </div>
+
+                <button
+                  onClick={() => voteSong(song)}
+                  disabled={song.status === "played"}
+                  style={{
+                    marginTop: 10,
+                    padding: "9px 14px",
+                    borderRadius: 12,
+                    border: "none",
+                    background:
+                      song.status === "played"
+                        ? "#333"
+                        : "linear-gradient(90deg,#16a34a,#22c55e)",
+                    color: "white",
+                    cursor: song.status === "played" ? "not-allowed" : "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  👍 {song.votes}
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </main>
   );
