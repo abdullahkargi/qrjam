@@ -221,7 +221,7 @@ export default function Home() {
             marginBottom: 4,
           }}
         >
-          🎧 DJ Larry Laffer
+          🎧 DJ Barkın Falakacılar
         </h1>
 
         <p style={{ color: "#bbb", fontSize: 16 }}>

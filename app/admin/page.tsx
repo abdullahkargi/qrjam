@@ -170,7 +170,7 @@ export default function AdminPage() {
             border: "1px solid #333",
           }}
         >
-          <h2>🔒 DJ Larry Girişi</h2>
+          <h2>🔒 DJ Barkın Girişi</h2>
 
           <input
             type="password"
@@ -414,7 +414,7 @@ export default function AdminPage() {
           color: "transparent",
         }}
       >
-        🎧 DJ Larry Laffer
+        🎧 DJ Barkın Falakacılar
       </h1>
 
       <p style={{ color: "#aaa" }}>YouTube istekleri canlı yönetim paneli</p>
