@@ -1,8 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
-
-const PASSWORD = "qrjam2026";
+import {
+  AppSettings,
+  defaultSettings,
+  getSettings,
+  updateSetting,
+} from "../../lib/settings";
 
 type Song = {
   id: number;
@@ -22,8 +26,15 @@ export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [authorized, setAuthorized] = useState(false);
   const [newSongId, setNewSongId] = useState<number | null>(null);
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [showSettings, setShowSettings] = useState(false);
 
   const previousIds = useRef<number[]>([]);
+
+  const loadSettings = async () => {
+    const loadedSettings = await getSettings();
+    setSettings(loadedSettings);
+  };
 
   const fetchSongs = async () => {
     const { data, error } = await supabase
@@ -40,7 +51,11 @@ export default function AdminPage() {
           !previousIds.current.includes(song.id) && song.status === "pending"
       );
 
-      if (previousIds.current.length > 0 && newItem) {
+      if (
+        previousIds.current.length > 0 &&
+        newItem &&
+        settings.new_request_animation === "true"
+      ) {
         setNewSongId(newItem.id);
         setTimeout(() => setNewSongId(null), 3000);
       }
@@ -61,6 +76,7 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
+    loadSettings();
     fetchSongs();
 
     const channel = supabase
@@ -78,11 +94,16 @@ export default function AdminPage() {
   }, []);
 
   const handleLogin = () => {
-    if (password === PASSWORD) {
+    if (password === settings.admin_password) {
       setAuthorized(true);
     } else {
       alert("Yanlış şifre");
     }
+  };
+
+  const saveSetting = async (key: keyof AppSettings, value: string) => {
+    setSettings((old) => ({ ...old, [key]: value }));
+    await updateSetting(key, value);
   };
 
   const markPlayed = async (song: Song) => {
@@ -132,7 +153,12 @@ export default function AdminPage() {
     const confirmReset = confirm("Tüm şarkılar silinsin mi?");
     if (!confirmReset) return;
 
-    await supabase.from("songs").delete().neq("id", 0);
+    if (settings.clear_history_on_reset === "true") {
+      await supabase.from("songs").delete().neq("id", 0);
+    } else {
+      await supabase.from("songs").delete().eq("status", "pending");
+    }
+
     setSongs([]);
     setNowPlaying(null);
     fetchSongs();
@@ -144,6 +170,22 @@ export default function AdminPage() {
     } else {
       document.exitFullscreen();
     }
+  };
+
+  const getThemeBackground = () => {
+    if (settings.theme_color === "green") {
+      return "radial-gradient(circle at top, rgba(34,197,94,0.35), transparent 35%), radial-gradient(circle at bottom right, rgba(124,58,237,0.25), transparent 35%), #050505";
+    }
+
+    if (settings.theme_color === "gold") {
+      return "radial-gradient(circle at top, rgba(245,158,11,0.35), transparent 35%), radial-gradient(circle at bottom right, rgba(255,0,200,0.20), transparent 35%), #050505";
+    }
+
+    if (settings.theme_color === "red") {
+      return "radial-gradient(circle at top, rgba(239,68,68,0.35), transparent 35%), radial-gradient(circle at bottom right, rgba(124,58,237,0.25), transparent 35%), #050505";
+    }
+
+    return "radial-gradient(circle at top, rgba(124,58,237,0.35), transparent 35%), radial-gradient(circle at bottom right, rgba(34,197,94,0.25), transparent 35%), #050505";
   };
 
   if (!authorized) {
@@ -170,7 +212,7 @@ export default function AdminPage() {
             border: "1px solid #333",
           }}
         >
-          <h2>🔒 DJ Barkın Girişi</h2>
+          <h2>🔒 Admin Girişi</h2>
 
           <input
             type="password"
@@ -366,8 +408,7 @@ export default function AdminPage() {
     <main
       style={{
         minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top, rgba(124,58,237,0.35), transparent 35%), radial-gradient(circle at bottom right, rgba(34,197,94,0.25), transparent 35%), #050505",
+        background: getThemeBackground(),
         color: "white",
         padding: 30,
         fontFamily: "Arial, sans-serif",
@@ -392,6 +433,7 @@ export default function AdminPage() {
         <button
           onClick={resetNight}
           style={{
+            marginRight: 10,
             padding: "10px 14px",
             background: "linear-gradient(90deg,#991b1b,#ef4444)",
             color: "white",
@@ -402,6 +444,20 @@ export default function AdminPage() {
           }}
         >
           🔥 Geceyi Sıfırla
+        </button>
+
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          style={{
+            padding: "10px 14px",
+            background: "#222",
+            color: "white",
+            border: "1px solid #444",
+            borderRadius: 10,
+            cursor: "pointer",
+          }}
+        >
+          ⚙️ Ayarlar
         </button>
       </div>
 
@@ -414,10 +470,215 @@ export default function AdminPage() {
           color: "transparent",
         }}
       >
-        🎧 DJ Barkın Falakacılar
+        🎧 {settings.dj_name}
       </h1>
 
-      <p style={{ color: "#aaa" }}>YouTube istekleri canlı yönetim paneli</p>
+      <p style={{ color: "#aaa" }}>{settings.welcome_message}</p>
+
+      {settings.logo_url && (
+        <img
+          src={settings.logo_url}
+          alt="DJ Logo"
+          style={{
+            width: 110,
+            height: 110,
+            objectFit: "cover",
+            borderRadius: 20,
+            marginTop: 15,
+            border: "1px solid #333",
+          }}
+        />
+      )}
+
+      {showSettings && (
+        <section
+          style={{
+            marginTop: 25,
+            padding: 24,
+            background: "linear-gradient(135deg,#111,#181818)",
+            border: "1px solid #333",
+            borderRadius: 22,
+            boxShadow: "0 0 30px rgba(124,58,237,0.25)",
+          }}
+        >
+          <h2 style={{ marginBottom: 6, fontSize: 28 }}>⚙️ Panel Ayarları</h2>
+
+          <p style={{ color: "#aaa", marginBottom: 22 }}>
+            DJ adı, şifre, tema ve istek kurallarını buradan yönet.
+          </p>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, 1fr)",
+              gap: 16,
+            }}
+          >
+            {Object.entries(settings).map(([key, value]) => (
+              <div
+                key={key}
+                style={{
+                  padding: 16,
+                  background: "#0b0b0b",
+                  border: "1px solid #2a2a2a",
+                  borderRadius: 16,
+                }}
+              >
+                <label
+                  style={{
+                    display: "block",
+                    color: "#a78bfa",
+                    marginBottom: 8,
+                    fontWeight: "bold",
+                    textTransform: "uppercase",
+                    fontSize: 12,
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  {key}
+                </label>
+
+{key === "blacklist" ? (
+  <textarea
+    value={value}
+    onChange={(e) =>
+      setSettings((old) => ({
+        ...old,
+        [key]: e.target.value,
+      }))
+    }
+    onBlur={(e) =>
+      saveSetting(key as keyof AppSettings, e.target.value)
+    }
+    style={{
+      width: "100%",
+      minHeight: 90,
+      padding: 12,
+      background: "#050505",
+      color: "white",
+      border: "1px solid #333",
+      borderRadius: 12,
+      resize: "vertical",
+    }}
+  />
+) : key === "theme_color" ? (
+  <select
+    value={value}
+    onChange={(e) => {
+      setSettings((old) => ({
+        ...old,
+        [key]: e.target.value,
+      }));
+      saveSetting(key as keyof AppSettings, e.target.value);
+    }}
+    style={{
+      width: "100%",
+      padding: 12,
+      background: "#050505",
+      color: "white",
+      border: "1px solid #333",
+      borderRadius: 12,
+    }}
+  >
+    <option value="purple">Mor Neon</option>
+    <option value="green">Yeşil Neon</option>
+    <option value="gold">Gold</option>
+    <option value="red">Kırmızı</option>
+  </select>
+) : key === "safe_search" ? (
+  <select
+    value={value}
+    onChange={(e) => {
+      setSettings((old) => ({
+        ...old,
+        [key]: e.target.value,
+      }));
+      saveSetting(key as keyof AppSettings, e.target.value);
+    }}
+    style={{
+      width: "100%",
+      padding: 12,
+      background: "#050505",
+      color: "white",
+      border: "1px solid #333",
+      borderRadius: 12,
+    }}
+  >
+    <option value="strict">Strict</option>
+    <option value="moderate">Moderate</option>
+    <option value="none">None</option>
+  </select>
+) : value === "true" || value === "false" ? (
+  <select
+    value={value}
+    onChange={(e) => {
+      setSettings((old) => ({
+        ...old,
+        [key]: e.target.value,
+      }));
+      saveSetting(key as keyof AppSettings, e.target.value);
+    }}
+    style={{
+      width: "100%",
+      padding: 12,
+      background: "#050505",
+      color: "white",
+      border: "1px solid #333",
+      borderRadius: 12,
+    }}
+  >
+    <option value="true">Açık</option>
+    <option value="false">Kapalı</option>
+  </select>
+) : (
+  <input
+    value={value}
+    onChange={(e) =>
+      setSettings((old) => ({
+        ...old,
+        [key]: e.target.value,
+      }))
+    }
+    onBlur={(e) =>
+      saveSetting(key as keyof AppSettings, e.target.value)
+    }
+    style={{
+      width: "100%",
+      padding: 12,
+      background: "#050505",
+      color: "white",
+      border: "1px solid #333",
+      borderRadius: 12,
+    }}
+  />
+)}
+
+                <small style={{ color: "#777", display: "block", marginTop: 8 }}>
+                  {key === "dj_name" && "DJ adı"}
+                  {key === "admin_password" && "Admin giriş şifresi"}
+                  {key === "cooldown" && "180 = 3 dakika"}
+                  {key === "theme_color" && "purple / green / gold / red"}
+                  {key === "blacklist" && "Virgülle ayır"}
+                  {key === "welcome_message" && "Karşılama mesajı"}
+                  {key === "voting_enabled" && "true / false"}
+                  {key === "youtube_enabled" && "YouTube açık mı"}
+                  {key === "allow_duplicate_songs" && "Aynı şarkı tekrar"}
+                  {key === "allow_multi_vote" && "Çoklu oy"}
+                  {key === "new_request_animation" && "Yeni istek efekti"}
+                  {key === "logo_url" && "Logo linki"}
+                  {key === "daily_request_limit" && "Günlük limit"}
+                  {key === "clear_history_on_reset" && "Geçmiş de silinsin"}
+                  {key === "safe_search" && "strict önerilir"}
+                </small>
+              </div>
+            ))}
+          </div>
+
+          <p style={{ color: "#22c55e", marginTop: 20, fontWeight: "bold" }}>
+            ✅ Değişiklikler otomatik kaydedilir.
+          </p>
+        </section>
+      )}
 
       <div
         style={{
@@ -427,22 +688,50 @@ export default function AdminPage() {
           marginTop: 24,
         }}
       >
-        <div style={{ padding: 16, background: "#111", border: "1px solid #333", borderRadius: 14 }}>
+        <div
+          style={{
+            padding: 16,
+            background: "#111",
+            border: "1px solid #333",
+            borderRadius: 14,
+          }}
+        >
           <div style={{ color: "#aaa" }}>Toplam İstek</div>
           <strong style={{ fontSize: 26 }}>{songs.length}</strong>
         </div>
 
-        <div style={{ padding: 16, background: "#111", border: "1px solid #333", borderRadius: 14 }}>
+        <div
+          style={{
+            padding: 16,
+            background: "#111",
+            border: "1px solid #333",
+            borderRadius: 14,
+          }}
+        >
           <div style={{ color: "#aaa" }}>Bekleyen</div>
           <strong style={{ fontSize: 26 }}>{pendingSongs.length}</strong>
         </div>
 
-        <div style={{ padding: 16, background: "#111", border: "1px solid #333", borderRadius: 14 }}>
+        <div
+          style={{
+            padding: 16,
+            background: "#111",
+            border: "1px solid #333",
+            borderRadius: 14,
+          }}
+        >
           <div style={{ color: "#aaa" }}>Çalınan</div>
           <strong style={{ fontSize: 26 }}>{playedSongs.length}</strong>
         </div>
 
-        <div style={{ padding: 16, background: "#111", border: "1px solid #333", borderRadius: 14 }}>
+        <div
+          style={{
+            padding: 16,
+            background: "#111",
+            border: "1px solid #333",
+            borderRadius: 14,
+          }}
+        >
           <div style={{ color: "#aaa" }}>En Çok Oy</div>
           <strong style={{ fontSize: 26 }}>{maxVotes}</strong>
         </div>
