@@ -11,21 +11,10 @@ type Song = {
   status: string;
   created_at?: string;
   played_at?: string;
+  youtube_url?: string;
+  youtube_channel?: string;
+  thumbnail?: string;
 };
-
-function getLinkInfo(text: string) {
-  if (!text.startsWith("http")) return null;
-
-  if (text.includes("youtube.com") || text.includes("youtu.be")) {
-    return { label: "YouTube", emoji: "▶️" };
-  }
-
-  if (text.includes("spotify.com")) {
-    return { label: "Spotify", emoji: "🟢" };
-  }
-
-  return { label: "Link", emoji: "🔗" };
-}
 
 export default function AdminPage() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -42,10 +31,7 @@ export default function AdminPage() {
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (error) {
-      console.log("HATA:", error);
-      return;
-    }
+    if (error) return;
 
     if (data) {
       const currentIds = data.map((song) => song.id);
@@ -241,6 +227,141 @@ export default function AdminPage() {
   const maxVotes =
     songs.length > 0 ? Math.max(...songs.map((song) => song.votes)) : 0;
 
+  const SongCard = ({
+    song,
+    index,
+    isNew,
+    compact = false,
+  }: {
+    song: Song;
+    index?: number;
+    isNew?: boolean;
+    compact?: boolean;
+  }) => (
+    <div
+      style={{
+        marginTop: 14,
+        padding: compact ? 12 : index !== undefined && index < 3 ? 22 : 16,
+        fontSize: compact ? 14 : index !== undefined && index < 3 ? 20 : 16,
+        background: isNew
+          ? "linear-gradient(90deg,#7c3aed,#16a34a)"
+          : index === 0
+          ? "linear-gradient(90deg,#231942,#151515)"
+          : "#151515",
+        borderRadius: 16,
+        border: isNew
+          ? "2px solid #22c55e"
+          : index === 0
+          ? "1px solid #7c3aed"
+          : "1px solid #2a2a2a",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 15,
+        boxShadow: isNew
+          ? "0 0 35px rgba(34,197,94,0.9)"
+          : index === 0
+          ? "0 0 22px rgba(124,58,237,0.35)"
+          : "none",
+        transform: isNew ? "scale(1.03)" : "scale(1)",
+        transition: "all 0.3s ease",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {song.thumbnail && (
+          <img
+            src={song.thumbnail}
+            alt={song.name}
+            style={{
+              width: compact ? 70 : 96,
+              height: compact ? 52 : 72,
+              objectFit: "cover",
+              borderRadius: 12,
+            }}
+          />
+        )}
+
+        <div>
+          <strong>
+            {isNew ? "🆕 " : ""}
+            {index !== undefined ? `${index + 1}. ` : ""}
+            {song.youtube_url ? (
+              <a
+                href={song.youtube_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "white", textDecoration: "none" }}
+              >
+                ▶️ {song.name}
+              </a>
+            ) : (
+              <>🎵 {song.name}</>
+            )}
+          </strong>
+
+          {song.youtube_channel && (
+            <div style={{ color: "#aaa", marginTop: 4 }}>
+              {song.youtube_channel}
+            </div>
+          )}
+
+          <div style={{ color: "#aaa", marginTop: 6 }}>👍 {song.votes} oy</div>
+        </div>
+      </div>
+
+      {!compact && (
+        <div>
+          <button
+            onClick={() => markPlayed(song)}
+            style={{
+              padding: "10px 15px",
+              background: "linear-gradient(90deg,#16a34a,#22c55e)",
+              color: "white",
+              border: "none",
+              borderRadius: 10,
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            Çal
+          </button>
+
+          <button
+            onClick={() => deleteSong(song.id)}
+            style={{
+              marginLeft: 10,
+              padding: "10px 15px",
+              background: "linear-gradient(90deg,#dc2626,#ef4444)",
+              color: "white",
+              border: "none",
+              borderRadius: 10,
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            Sil
+          </button>
+        </div>
+      )}
+
+      {compact && (
+        <button
+          onClick={() => undoPlayed(song)}
+          style={{
+            padding: "8px 12px",
+            background: "#333",
+            color: "white",
+            border: "none",
+            borderRadius: 8,
+            cursor: "pointer",
+          }}
+        >
+          Geri Al
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <main
       style={{
@@ -296,7 +417,7 @@ export default function AdminPage() {
         🎧 DJ Larry Laffer
       </h1>
 
-      <p style={{ color: "#aaa" }}>QRJam canlı istek paneli</p>
+      <p style={{ color: "#aaa" }}>YouTube istekleri canlı yönetim paneli</p>
 
       <div
         style={{
@@ -306,50 +427,22 @@ export default function AdminPage() {
           marginTop: 24,
         }}
       >
-        <div
-          style={{
-            padding: 16,
-            background: "#111",
-            border: "1px solid #333",
-            borderRadius: 14,
-          }}
-        >
+        <div style={{ padding: 16, background: "#111", border: "1px solid #333", borderRadius: 14 }}>
           <div style={{ color: "#aaa" }}>Toplam İstek</div>
           <strong style={{ fontSize: 26 }}>{songs.length}</strong>
         </div>
 
-        <div
-          style={{
-            padding: 16,
-            background: "#111",
-            border: "1px solid #333",
-            borderRadius: 14,
-          }}
-        >
+        <div style={{ padding: 16, background: "#111", border: "1px solid #333", borderRadius: 14 }}>
           <div style={{ color: "#aaa" }}>Bekleyen</div>
           <strong style={{ fontSize: 26 }}>{pendingSongs.length}</strong>
         </div>
 
-        <div
-          style={{
-            padding: 16,
-            background: "#111",
-            border: "1px solid #333",
-            borderRadius: 14,
-          }}
-        >
+        <div style={{ padding: 16, background: "#111", border: "1px solid #333", borderRadius: 14 }}>
           <div style={{ color: "#aaa" }}>Çalınan</div>
           <strong style={{ fontSize: 26 }}>{playedSongs.length}</strong>
         </div>
 
-        <div
-          style={{
-            padding: 16,
-            background: "#111",
-            border: "1px solid #333",
-            borderRadius: 14,
-          }}
-        >
+        <div style={{ padding: 16, background: "#111", border: "1px solid #333", borderRadius: 14 }}>
           <div style={{ color: "#aaa" }}>En Çok Oy</div>
           <strong style={{ fontSize: 26 }}>{maxVotes}</strong>
         </div>
@@ -368,9 +461,7 @@ export default function AdminPage() {
         <h2 style={{ color: "#22c55e", marginBottom: 12 }}>🔥 Şu An Çalan</h2>
 
         {nowPlaying ? (
-          <div style={{ fontSize: 32, fontWeight: "bold" }}>
-            🎵 {nowPlaying.name}
-          </div>
+          <SongCard song={nowPlaying} compact />
         ) : (
           <p style={{ color: "#777" }}>Henüz çalan şarkı yok.</p>
         )}
@@ -392,99 +483,14 @@ export default function AdminPage() {
             <p style={{ color: "#777" }}>Bekleyen istek yok.</p>
           )}
 
-          {pendingSongs.map((song, index) => {
-            const isNew = song.id === newSongId;
-            const linkInfo = getLinkInfo(song.name);
-
-            return (
-              <div
-                key={song.id}
-                style={{
-                  marginTop: 14,
-                  padding: index < 3 ? 22 : 16,
-                  fontSize: index < 3 ? 22 : 16,
-                  background: isNew
-                    ? "linear-gradient(90deg,#7c3aed,#16a34a)"
-                    : index === 0
-                    ? "linear-gradient(90deg,#231942,#151515)"
-                    : "#151515",
-                  borderRadius: 16,
-                  border: isNew
-                    ? "2px solid #22c55e"
-                    : index === 0
-                    ? "1px solid #7c3aed"
-                    : "1px solid #2a2a2a",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 15,
-                  boxShadow: isNew
-                    ? "0 0 35px rgba(34,197,94,0.9)"
-                    : index === 0
-                    ? "0 0 22px rgba(124,58,237,0.35)"
-                    : "none",
-                  transform: isNew ? "scale(1.03)" : "scale(1)",
-                  transition: "all 0.3s ease",
-                }}
-              >
-                <div>
-                  <strong>
-                    {isNew ? "🆕 " : ""}
-                    {index + 1}.{" "}
-                    {linkInfo ? (
-                      <a
-                        href={song.name}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: "white" }}
-                      >
-                        {linkInfo.emoji} {linkInfo.label} isteği
-                      </a>
-                    ) : (
-                      <>🎵 {song.name}</>
-                    )}
-                  </strong>
-
-                  <div style={{ color: "#aaa", marginTop: 6 }}>
-                    👍 {song.votes} oy
-                  </div>
-                </div>
-
-                <div>
-                  <button
-                    onClick={() => markPlayed(song)}
-                    style={{
-                      padding: "10px 15px",
-                      background: "linear-gradient(90deg,#16a34a,#22c55e)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 10,
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Çal
-                  </button>
-
-                  <button
-                    onClick={() => deleteSong(song.id)}
-                    style={{
-                      marginLeft: 10,
-                      padding: "10px 15px",
-                      background: "linear-gradient(90deg,#dc2626,#ef4444)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 10,
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Sil
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          {pendingSongs.map((song, index) => (
+            <SongCard
+              key={song.id}
+              song={song}
+              index={index}
+              isNew={song.id === newSongId}
+            />
+          ))}
         </section>
 
         <section>
@@ -494,56 +500,9 @@ export default function AdminPage() {
             <p style={{ color: "#777" }}>Henüz çalınan yok.</p>
           )}
 
-          {playedSongs.map((song) => {
-            const linkInfo = getLinkInfo(song.name);
-
-            return (
-              <div
-                key={song.id}
-                style={{
-                  marginTop: 12,
-                  padding: 14,
-                  background: "#101010",
-                  border: "1px solid #333",
-                  borderRadius: 12,
-                }}
-              >
-                <div style={{ fontWeight: "bold" }}>
-                  {linkInfo ? (
-                    <a
-                      href={song.name}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: "white" }}
-                    >
-                      {linkInfo.emoji} {linkInfo.label} isteği
-                    </a>
-                  ) : (
-                    <>🎵 {song.name}</>
-                  )}
-                </div>
-
-                <div style={{ color: "#aaa", marginTop: 6 }}>
-                  👍 {song.votes} oy
-                </div>
-
-                <button
-                  onClick={() => undoPlayed(song)}
-                  style={{
-                    marginTop: 10,
-                    padding: "8px 12px",
-                    background: "#333",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                  }}
-                >
-                  Geri Al
-                </button>
-              </div>
-            );
-          })}
+          {playedSongs.map((song) => (
+            <SongCard key={song.id} song={song} compact />
+          ))}
         </section>
       </div>
     </main>
