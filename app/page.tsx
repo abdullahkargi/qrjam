@@ -1,6 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import {
+  AppSettings,
+  defaultSettings,
+  getSettings,
+} from "../lib/settings";
 
 type Song = {
   id: number;
@@ -22,8 +27,6 @@ type YoutubeVideo = {
   url: string;
 };
 
-const COOLDOWN_MS = 3 * 60 * 1000;
-
 export default function Home() {
   const [query, setQuery] = useState("");
   const [videos, setVideos] = useState<YoutubeVideo[]>([]);
@@ -32,6 +35,14 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [cooldownLeft, setCooldownLeft] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+
+  const cooldownMs = Number(settings.cooldown || "180") * 1000;
+
+  const loadSettings = async () => {
+    const loadedSettings = await getSettings();
+    setSettings(loadedSettings);
+  };
 
   const fetchSongs = async () => {
     const { data, error } = await supabase.from("songs").select("*");
@@ -55,17 +66,49 @@ export default function Home() {
   const updateCooldown = () => {
     const lastRequest = Number(localStorage.getItem("lastRequestTime") || "0");
     const now = Date.now();
-    const left = Math.max(0, COOLDOWN_MS - (now - lastRequest));
+    const left = Math.max(0, cooldownMs - (now - lastRequest));
     setCooldownLeft(left);
   };
 
+  const hasBlacklistedWord = (text: string) => {
+    const blacklist = settings.blacklist
+      .split(",")
+      .map((word) => word.trim().toLowerCase())
+      .filter(Boolean);
+
+    const lowerText = text.toLowerCase();
+
+    return blacklist.some((word) => lowerText.includes(word));
+  };
+
+  const getTodayKey = () => {
+    const today = new Date().toISOString().split("T")[0];
+    return `dailyRequestCount_${today}`;
+  };
+
+  const getDailyCount = () => {
+    return Number(localStorage.getItem(getTodayKey()) || "0");
+  };
+
+  const increaseDailyCount = () => {
+    const current = getDailyCount();
+    localStorage.setItem(getTodayKey(), String(current + 1));
+  };
+
   useEffect(() => {
+    loadSettings();
     fetchSongs();
-    updateCooldown();
 
-    const timer = setInterval(updateCooldown, 1000);
+    const settingsChannel = supabase
+      .channel("settings-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "settings" },
+        () => loadSettings()
+      )
+      .subscribe();
 
-    const channel = supabase
+    const songsChannel = supabase
       .channel("songs-realtime")
       .on(
         "postgres_changes",
@@ -75,16 +118,33 @@ export default function Home() {
       .subscribe();
 
     return () => {
-      clearInterval(timer);
-      supabase.removeChannel(channel);
+      supabase.removeChannel(settingsChannel);
+      supabase.removeChannel(songsChannel);
     };
   }, []);
 
+  useEffect(() => {
+    updateCooldown();
+    const timer = setInterval(updateCooldown, 1000);
+
+    return () => clearInterval(timer);
+  }, [settings.cooldown]);
+
   const searchYoutube = async () => {
+    if (settings.youtube_enabled !== "true") {
+      setMessage("YouTube arama şu anda kapalı.");
+      return;
+    }
+
     const cleanQuery = query.trim();
 
     if (!cleanQuery) {
       setMessage("Önce şarkı adı yaz 🎵");
+      return;
+    }
+
+    if (hasBlacklistedWord(cleanQuery)) {
+      setMessage("Bu aramada yasaklı kelime var.");
       return;
     }
 
@@ -126,10 +186,22 @@ export default function Home() {
       return;
     }
 
+    if (hasBlacklistedWord(selectedVideo.title)) {
+      setMessage("Seçilen şarkıda yasaklı kelime var.");
+      return;
+    }
+
+    const dailyLimit = Number(settings.daily_request_limit || "10");
+
+    if (getDailyCount() >= dailyLimit) {
+      setMessage(`Bugünkü istek hakkın doldu. Limit: ${dailyLimit}`);
+      return;
+    }
+
     const lastRequest = Number(localStorage.getItem("lastRequestTime") || "0");
     const now = Date.now();
 
-    if (now - lastRequest < COOLDOWN_MS) {
+    if (now - lastRequest < cooldownMs) {
       setMessage("Yeni şarkı göndermek için biraz bekle ⏳");
       return;
     }
@@ -140,7 +212,7 @@ export default function Home() {
       .eq("youtube_url", selectedVideo.url)
       .maybeSingle();
 
-    if (existing) {
+    if (existing && settings.allow_duplicate_songs !== "true") {
       setMessage("Bu şarkı zaten listede. Yanındaki 👍 butonuyla oy verebilirsin.");
       return;
     }
@@ -163,6 +235,8 @@ export default function Home() {
     }
 
     localStorage.setItem("lastRequestTime", String(now));
+    increaseDailyCount();
+
     setMessage("Şarkın sıraya alındı 🎧");
     setQuery("");
     setVideos([]);
@@ -172,9 +246,14 @@ export default function Home() {
   };
 
   const voteSong = async (song: Song) => {
+    if (settings.voting_enabled !== "true") {
+      setMessage("Oy sistemi şu anda kapalı.");
+      return;
+    }
+
     const votedSongs = JSON.parse(localStorage.getItem("votedSongs") || "[]");
 
-    if (votedSongs.includes(song.id)) {
+    if (settings.allow_multi_vote !== "true" && votedSongs.includes(song.id)) {
       setMessage("Bu şarkıya zaten oy verdin 👍");
       return;
     }
@@ -204,7 +283,13 @@ export default function Home() {
       style={{
         minHeight: "100vh",
         background:
-          "radial-gradient(circle at top, rgba(255,0,204,0.25), transparent 35%), radial-gradient(circle at bottom, rgba(124,58,237,0.35), transparent 40%), #050505",
+          settings.theme_color === "green"
+            ? "radial-gradient(circle at top, rgba(34,197,94,0.35), transparent 35%), #050505"
+            : settings.theme_color === "gold"
+            ? "radial-gradient(circle at top, rgba(245,158,11,0.35), transparent 35%), #050505"
+            : settings.theme_color === "red"
+            ? "radial-gradient(circle at top, rgba(239,68,68,0.35), transparent 35%), #050505"
+            : "radial-gradient(circle at top, rgba(255,0,204,0.25), transparent 35%), radial-gradient(circle at bottom, rgba(124,58,237,0.35), transparent 40%), #050505",
         color: "white",
         padding: 24,
         textAlign: "center",
@@ -212,6 +297,21 @@ export default function Home() {
       }}
     >
       <div style={{ maxWidth: 560, margin: "0 auto" }}>
+        {settings.logo_url && (
+          <img
+            src={settings.logo_url}
+            alt="Logo"
+            style={{
+              width: 110,
+              height: 110,
+              objectFit: "cover",
+              borderRadius: 22,
+              marginBottom: 16,
+              border: "1px solid #333",
+            }}
+          />
+        )}
+
         <h1
           style={{
             fontSize: 46,
@@ -221,11 +321,11 @@ export default function Home() {
             marginBottom: 4,
           }}
         >
-          🎧 DJ Barkın Falakacılar
+          🎧 {settings.dj_name}
         </h1>
 
         <p style={{ color: "#bbb", fontSize: 16 }}>
-          YouTube’dan şarkını seç, kalabalık oylasın.
+          {settings.welcome_message}
         </p>
 
         <div
@@ -245,6 +345,7 @@ export default function Home() {
               if (e.key === "Enter") searchYoutube();
             }}
             placeholder="Şarkı ara..."
+            disabled={settings.youtube_enabled !== "true"}
             style={{
               padding: 15,
               width: "100%",
@@ -259,23 +360,31 @@ export default function Home() {
 
           <button
             onClick={searchYoutube}
-            disabled={isSearching}
+            disabled={isSearching || settings.youtube_enabled !== "true"}
             style={{
               marginTop: 14,
               padding: 15,
               width: "100%",
               borderRadius: 14,
               border: "none",
-              background: isSearching
-                ? "#333"
-                : "linear-gradient(90deg,#7c3aed,#22c55e)",
+              background:
+                isSearching || settings.youtube_enabled !== "true"
+                  ? "#333"
+                  : "linear-gradient(90deg,#7c3aed,#22c55e)",
               color: "white",
               fontWeight: "bold",
-              cursor: isSearching ? "not-allowed" : "pointer",
+              cursor:
+                isSearching || settings.youtube_enabled !== "true"
+                  ? "not-allowed"
+                  : "pointer",
               fontSize: 16,
             }}
           >
-            {isSearching ? "Aranıyor..." : "YouTube’da Ara"}
+            {settings.youtube_enabled !== "true"
+              ? "YouTube Arama Kapalı"
+              : isSearching
+              ? "Aranıyor..."
+              : "YouTube’da Ara"}
           </button>
 
           {videos.length > 0 && (
@@ -413,25 +522,27 @@ export default function Home() {
                 </div>
               </div>
 
-              <button
-                onClick={() => voteSong(song)}
-                disabled={song.status === "played"}
-                style={{
-                  marginTop: 10,
-                  padding: "9px 14px",
-                  borderRadius: 12,
-                  border: "none",
-                  background:
-                    song.status === "played"
-                      ? "#333"
-                      : "linear-gradient(90deg,#16a34a,#22c55e)",
-                  color: "white",
-                  cursor: song.status === "played" ? "not-allowed" : "pointer",
-                  fontWeight: "bold",
-                }}
-              >
-                👍 {song.votes}
-              </button>
+              {settings.voting_enabled === "true" && (
+                <button
+                  onClick={() => voteSong(song)}
+                  disabled={song.status === "played"}
+                  style={{
+                    marginTop: 10,
+                    padding: "9px 14px",
+                    borderRadius: 12,
+                    border: "none",
+                    background:
+                      song.status === "played"
+                        ? "#333"
+                        : "linear-gradient(90deg,#16a34a,#22c55e)",
+                    color: "white",
+                    cursor: song.status === "played" ? "not-allowed" : "pointer",
+                    fontWeight: "bold",
+                  }}
+                >
+                  👍 {song.votes}
+                </button>
+              )}
             </div>
           ))}
         </div>
