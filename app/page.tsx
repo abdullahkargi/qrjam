@@ -181,6 +181,13 @@ export default function Home() {
   };
 
   const addSong = async () => {
+    const latestSettings = await getSettings();
+setSettings(latestSettings);
+
+if (latestSettings.youtube_enabled !== "true") {
+  setMessage("🚫 Şu anda istek alamıyoruz.");
+  return;
+}
     if (!selectedVideo) {
       setMessage("Önce listeden bir YouTube sonucu seç 🎵");
       return;

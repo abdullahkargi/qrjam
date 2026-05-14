@@ -676,7 +676,8 @@ export default function AdminPage() {
       await saveSetting(key as keyof AppSettings, value);
     }
 
-    window.location.reload();
+await loadSettings();
+alert("Ayarlar kaydedildi ✅");
   }}
   style={{
     marginTop: 22,
