@@ -17,6 +17,8 @@ type Song = {
   youtube_url?: string;
   youtube_channel?: string;
   thumbnail?: string;
+  song_message?: string | null;
+  device_id?: string | null;
 };
 
 type YoutubeVideo = {
@@ -27,10 +29,22 @@ type YoutubeVideo = {
   url: string;
 };
 
+type NewSong = {
+  name: string;
+  votes: number;
+  status: string;
+  youtube_url: string;
+  youtube_channel: string;
+  thumbnail: string;
+  song_message?: string;
+  device_id?: string;
+};
+
 export default function Home() {
   const [query, setQuery] = useState("");
   const [videos, setVideos] = useState<YoutubeVideo[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<YoutubeVideo | null>(null);
+  const [songMessage, setSongMessage] = useState("");
   const [songs, setSongs] = useState<Song[]>([]);
   const [message, setMessage] = useState("");
   const [cooldownLeft, setCooldownLeft] = useState(0);
@@ -70,8 +84,11 @@ export default function Home() {
     setCooldownLeft(left);
   };
 
-  const hasBlacklistedWord = (text: string) => {
-    const blacklist = settings.blacklist
+  const hasBlacklistedWord = (
+    text: string,
+    sourceSettings: AppSettings = settings
+  ) => {
+    const blacklist = sourceSettings.blacklist
       .split(",")
       .map((word) => word.trim().toLowerCase())
       .filter(Boolean);
@@ -93,6 +110,41 @@ export default function Home() {
   const increaseDailyCount = () => {
     const current = getDailyCount();
     localStorage.setItem(getTodayKey(), String(current + 1));
+  };
+
+  const createDeviceId = () => {
+    if (globalThis.crypto?.randomUUID) {
+      return globalThis.crypto.randomUUID();
+    }
+
+    return `device_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  };
+
+  const getDeviceId = () => {
+    const storageKey = "qrjam_device_id";
+    const existingDeviceId = localStorage.getItem(storageKey);
+
+    if (existingDeviceId) {
+      return existingDeviceId;
+    }
+
+    const newDeviceId = createDeviceId();
+    localStorage.setItem(storageKey, newDeviceId);
+    return newDeviceId;
+  };
+
+  const isMissingOptionalColumnError = (error: {
+    code?: string;
+    message?: string;
+  }) => {
+    const lowerMessage = (error.message || "").toLowerCase();
+
+    return (
+      error.code === "42703" ||
+      error.code === "PGRST204" ||
+      lowerMessage.includes("column") ||
+      lowerMessage.includes("schema cache")
+    );
   };
 
   useEffect(() => {
@@ -151,6 +203,7 @@ export default function Home() {
     setIsSearching(true);
     setMessage("YouTube’da aranıyor...");
     setSelectedVideo(null);
+    setSongMessage("");
 
     try {
       const response = await fetch(
@@ -193,8 +246,21 @@ if (latestSettings.youtube_enabled !== "true") {
       return;
     }
 
-    if (hasBlacklistedWord(selectedVideo.title)) {
+    if (hasBlacklistedWord(selectedVideo.title, latestSettings)) {
       setMessage("Seçilen şarkıda yasaklı kelime var.");
+      return;
+    }
+
+    const cleanSongMessage =
+      latestSettings.allow_song_messages === "true" ? songMessage.trim() : "";
+
+    if (cleanSongMessage.length > 80) {
+      setMessage("Mesaj en fazla 80 karakter olabilir.");
+      return;
+    }
+
+    if (cleanSongMessage && hasBlacklistedWord(cleanSongMessage, latestSettings)) {
+      setMessage("Mesajda yasaklı kelime var.");
       return;
     }
 
@@ -224,16 +290,66 @@ if (latestSettings.youtube_enabled !== "true") {
       return;
     }
 
-    const { error } = await supabase.from("songs").insert([
+    const newSong: NewSong = {
+      name: selectedVideo.title,
+      votes: 1,
+      status: "pending",
+      youtube_url: selectedVideo.url,
+      youtube_channel: selectedVideo.channel,
+      thumbnail: selectedVideo.thumbnail,
+      device_id: getDeviceId(),
+    };
+
+    if (cleanSongMessage) {
+      newSong.song_message = cleanSongMessage;
+    }
+
+    const withoutMessage = { ...newSong };
+    delete withoutMessage.song_message;
+
+    const withoutDevice = { ...newSong };
+    delete withoutDevice.device_id;
+
+    const withoutOptionalFields = { ...withoutMessage };
+    delete withoutOptionalFields.device_id;
+
+    const insertCandidates = [
       {
-        name: selectedVideo.title,
-        votes: 1,
-        status: "pending",
-        youtube_url: selectedVideo.url,
-        youtube_channel: selectedVideo.channel,
-        thumbnail: selectedVideo.thumbnail,
+        song: newSong,
+        messageSaved: Boolean(cleanSongMessage),
       },
-    ]);
+      {
+        song: withoutMessage,
+        messageSaved: false,
+      },
+      {
+        song: withoutDevice,
+        messageSaved: Boolean(cleanSongMessage),
+      },
+      {
+        song: withoutOptionalFields,
+        messageSaved: false,
+      },
+    ];
+
+    let error = null;
+    let messageSaved = Boolean(cleanSongMessage);
+
+    for (const candidate of insertCandidates) {
+      const result = await supabase.from("songs").insert([candidate.song]);
+
+      if (!result.error) {
+        error = null;
+        messageSaved = candidate.messageSaved;
+        break;
+      }
+
+      error = result.error;
+
+      if (!isMissingOptionalColumnError(result.error)) {
+        break;
+      }
+    }
 
     if (error) {
       console.log("EKLEME HATASI:", error);
@@ -244,10 +360,15 @@ if (latestSettings.youtube_enabled !== "true") {
     localStorage.setItem("lastRequestTime", String(now));
     increaseDailyCount();
 
-    setMessage("Şarkın sıraya alındı 🎧");
+    setMessage(
+      cleanSongMessage && !messageSaved
+        ? "Şarkın sıraya alındı 🎧 Mesaj için database migration gerekli."
+        : "Şarkın sıraya alındı 🎧"
+    );
     setQuery("");
     setVideos([]);
     setSelectedVideo(null);
+    setSongMessage("");
     updateCooldown();
     fetchSongs();
   };
@@ -284,6 +405,7 @@ if (latestSettings.youtube_enabled !== "true") {
   const secondsLeft = Math.ceil(cooldownLeft / 1000);
   const minutes = Math.floor(secondsLeft / 60);
   const seconds = secondsLeft % 60;
+  const requestsOpen = settings.youtube_enabled === "true";
 
   return (
     <main
@@ -304,7 +426,7 @@ if (latestSettings.youtube_enabled !== "true") {
       }}
     >
       <div style={{ maxWidth: 560, margin: "0 auto" }}>
-        {settings.logo_url && (
+        {settings.logo_url && requestsOpen && (
           <img
             src={settings.logo_url}
             alt="Logo"
@@ -335,21 +457,78 @@ if (latestSettings.youtube_enabled !== "true") {
           {settings.welcome_message}
         </p>
 
-{settings.youtube_enabled !== "true" && (
-  <div
-    style={{
-      marginTop: 25,
-      padding: 18,
-      background: "linear-gradient(90deg,#7f1d1d,#111)",
-      border: "1px solid #ef4444",
-      borderRadius: 16,
-      color: "white",
-      fontWeight: "bold",
-    }}
-  >
-    🚫 Şu anda istek alamıyoruz.
-  </div>
-)}
+        {!requestsOpen ? (
+          <section
+            style={{
+              marginTop: 34,
+              minHeight: 360,
+              padding: 28,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              background:
+                "linear-gradient(135deg,rgba(17,17,17,0.96),rgba(31,15,36,0.94))",
+              border: "1px solid rgba(244,114,182,0.38)",
+              borderRadius: 24,
+              boxShadow:
+                "0 0 45px rgba(244,114,182,0.22), inset 0 0 36px rgba(124,58,237,0.08)",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background:
+                  "radial-gradient(circle at top,rgba(239,68,68,0.20),transparent 34%), radial-gradient(circle at bottom,rgba(124,58,237,0.24),transparent 42%)",
+                pointerEvents: "none",
+              }}
+            />
+
+            <div style={{ position: "relative", zIndex: 1 }}>
+              {settings.logo_url && (
+                <img
+                  src={settings.logo_url}
+                  alt="Logo"
+                  style={{
+                    width: 118,
+                    height: 118,
+                    objectFit: "cover",
+                    borderRadius: 24,
+                    marginBottom: 20,
+                    border: "1px solid rgba(255,255,255,0.16)",
+                    boxShadow: "0 0 28px rgba(124,58,237,0.45)",
+                  }}
+                />
+              )}
+
+              <h2
+                style={{
+                  margin: 0,
+                  color: "white",
+                  fontSize: 34,
+                  lineHeight: 1.12,
+                }}
+              >
+                🚫 Şu anda istek alınmıyor
+              </h2>
+
+              <p
+                style={{
+                  marginTop: 14,
+                  marginBottom: 0,
+                  color: "#d1d5db",
+                  fontSize: 17,
+                }}
+              >
+                DJ birazdan tekrar istekleri açacak.
+              </p>
+            </div>
+          </section>
+        ) : (
+          <>
         <div
           style={{
             marginTop: 28,
@@ -416,6 +595,7 @@ if (latestSettings.youtube_enabled !== "true") {
                   key={video.videoId}
                   onClick={() => {
                     setSelectedVideo(video);
+                    setSongMessage("");
                     setMessage("Şarkı seçildi. Şimdi gönder.");
                   }}
                   style={{
@@ -457,6 +637,66 @@ if (latestSettings.youtube_enabled !== "true") {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {selectedVideo && settings.allow_song_messages === "true" && (
+            <div
+              style={{
+                marginTop: 16,
+                padding: 14,
+                background:
+                  "linear-gradient(135deg,rgba(124,58,237,0.16),rgba(34,197,94,0.08))",
+                border: "1px solid rgba(167,139,250,0.35)",
+                borderRadius: 16,
+                textAlign: "left",
+                boxShadow: "0 0 22px rgba(124,58,237,0.18)",
+              }}
+            >
+              <label
+                style={{
+                  display: "block",
+                  color: "#a78bfa",
+                  fontSize: 13,
+                  fontWeight: "bold",
+                  marginBottom: 8,
+                }}
+              >
+                Şarkıyla mesaj gönder
+              </label>
+
+              <textarea
+                value={songMessage}
+                onChange={(e) => setSongMessage(e.target.value.slice(0, 80))}
+                maxLength={80}
+                placeholder="Damada gelsin ❤️"
+                style={{
+                  width: "100%",
+                  minHeight: 76,
+                  padding: 12,
+                  background: "#050505",
+                  color: "white",
+                  border: "1px solid #333",
+                  borderRadius: 12,
+                  outline: "none",
+                  resize: "vertical",
+                  boxSizing: "border-box",
+                }}
+              />
+
+              <div
+                style={{
+                  marginTop: 8,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  color: "#aaa",
+                  fontSize: 12,
+                }}
+              >
+                <span>Opsiyonel</span>
+                <span>{songMessage.length}/80</span>
+              </div>
             </div>
           )}
 
@@ -540,6 +780,22 @@ if (latestSettings.youtube_enabled !== "true") {
                       {song.youtube_channel}
                     </div>
                   )}
+                  {song.song_message && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        padding: "8px 10px",
+                        background: "rgba(124,58,237,0.14)",
+                        border: "1px solid rgba(167,139,250,0.28)",
+                        borderRadius: 10,
+                        color: "#e9d5ff",
+                        fontSize: 13,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      💬 {song.song_message}
+                    </div>
+                  )}
                   {song.status === "played" && <span>✅ Çalındı</span>}
                 </div>
               </div>
@@ -568,6 +824,8 @@ if (latestSettings.youtube_enabled !== "true") {
             </div>
           ))}
         </div>
+          </>
+        )}
       </div>
     </main>
   );

@@ -19,6 +19,8 @@ type Song = {
   youtube_url?: string;
   youtube_channel?: string;
   thumbnail?: string;
+  song_message?: string | null;
+  device_id?: string | null;
 };
 
 export default function AdminPage() {
@@ -434,6 +436,21 @@ export default function AdminPage() {
     },
   ];
 
+  const formatRequestTime = (date?: string) => {
+    if (!date) return "Saat yok";
+
+    return new Date(date).toLocaleTimeString("tr-TR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const getDeviceRequestCount = (deviceId?: string | null) => {
+    if (!deviceId) return null;
+
+    return songs.filter((song) => song.device_id === deviceId).length;
+  };
+
   const SongCard = ({
     song,
     index,
@@ -444,7 +461,10 @@ export default function AdminPage() {
     index?: number;
     isNew?: boolean;
     compact?: boolean;
-  }) => (
+  }) => {
+    const deviceRequestCount = getDeviceRequestCount(song.device_id);
+
+    return (
     <div
       style={{
         marginTop: 14,
@@ -512,6 +532,59 @@ export default function AdminPage() {
             </div>
           )}
 
+          {song.song_message && (
+            <div
+              style={{
+                marginTop: 8,
+                padding: compact ? "7px 9px" : "9px 11px",
+                background: "rgba(124,58,237,0.16)",
+                border: "1px solid rgba(167,139,250,0.30)",
+                borderRadius: 10,
+                color: "#e9d5ff",
+                fontSize: compact ? 13 : 14,
+                overflowWrap: "anywhere",
+              }}
+            >
+              💬 {song.song_message}
+            </div>
+          )}
+
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              marginTop: 8,
+              color: "#d1d5db",
+              fontSize: compact ? 12 : 13,
+            }}
+          >
+            <span
+              style={{
+                padding: "6px 9px",
+                background: "rgba(34,197,94,0.10)",
+                border: "1px solid rgba(34,197,94,0.25)",
+                borderRadius: 999,
+              }}
+            >
+              🕒 {formatRequestTime(song.created_at)}
+            </span>
+
+            <span
+              style={{
+                padding: "6px 9px",
+                background: "rgba(56,189,248,0.10)",
+                border: "1px solid rgba(56,189,248,0.25)",
+                borderRadius: 999,
+              }}
+            >
+              📱 Bu cihazdan:{" "}
+              {deviceRequestCount === null
+                ? "Yeni kayıtlarda"
+                : `${deviceRequestCount} istek`}
+            </span>
+          </div>
+
           <div style={{ color: "#aaa", marginTop: 6 }}>👍 {song.votes} oy</div>
         </div>
       </div>
@@ -567,7 +640,8 @@ export default function AdminPage() {
         </button>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <main
@@ -830,6 +904,7 @@ export default function AdminPage() {
                   {key === "daily_request_limit" && "Günlük limit"}
                   {key === "clear_history_on_reset" && "Geçmiş de silinsin"}
                   {key === "safe_search" && "strict önerilir"}
+                  {key === "allow_song_messages" && "Şarkıyla mesaj gönderme"}
                 </small>
               </div>
             ))}
@@ -861,6 +936,123 @@ alert("Ayarlar kaydedildi ✅");
 </button>
         </section>
       )}
+
+      <div
+        style={{
+          marginTop: 32,
+          display: "grid",
+          gridTemplateColumns: "2fr 1fr",
+          gap: 24,
+          alignItems: "start",
+        }}
+      >
+        <section>
+          <h2 style={{ color: "#a78bfa" }}>⏭️ Sıradakiler</h2>
+
+          {pendingSongs.length === 0 && (
+            <p style={{ color: "#777" }}>Bekleyen istek yok.</p>
+          )}
+
+          {pendingSongs.map((song, index) => (
+            <SongCard
+              key={song.id}
+              song={song}
+              index={index}
+              isNew={song.id === newSongId}
+            />
+          ))}
+        </section>
+
+        <div>
+          <section
+            style={{
+              padding: 28,
+              background: "linear-gradient(135deg,#111,#1f1f1f)",
+              borderRadius: 20,
+              border: "1px solid #333",
+              boxShadow: "0 0 35px rgba(255,0,200,0.25)",
+            }}
+          >
+            <h2 style={{ color: "#22c55e", marginBottom: 12 }}>
+              🔥 En Son Çalan
+            </h2>
+            {nowPlaying ? (
+              <SongCard song={nowPlaying} compact />
+            ) : (
+              <p style={{ color: "#777" }}>Henüz çalan şarkı yok.</p>
+            )}
+          </section>
+
+          <section style={{ marginTop: 24 }}>
+            <h2 style={{ color: "#f472b6" }}>✅ Çalınan Geçmişi</h2>
+
+            {playedSongs.length === 0 && (
+              <p style={{ color: "#777" }}>Henüz çalınan yok.</p>
+            )}
+
+            {playedSongs.map((song) => (
+              <SongCard key={song.id} song={song} compact />
+            ))}
+          </section>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: 14,
+          marginTop: 28,
+        }}
+      >
+        <div
+          style={{
+            padding: 16,
+            background: "#111",
+            border: "1px solid #333",
+            borderRadius: 14,
+          }}
+        >
+          <div style={{ color: "#aaa" }}>Toplam İstek</div>
+          <strong style={{ fontSize: 26 }}>{songs.length}</strong>
+        </div>
+
+        <div
+          style={{
+            padding: 16,
+            background: "#111",
+            border: "1px solid #333",
+            borderRadius: 14,
+          }}
+        >
+          <div style={{ color: "#aaa" }}>Bekleyen</div>
+          <strong style={{ fontSize: 26 }}>{pendingSongs.length}</strong>
+        </div>
+
+        <div
+          style={{
+            padding: 16,
+            background: "#111",
+            border: "1px solid #333",
+            borderRadius: 14,
+          }}
+        >
+          <div style={{ color: "#aaa" }}>Çalınan</div>
+          <strong style={{ fontSize: 26 }}>{playedSongs.length}</strong>
+        </div>
+
+        <div
+          style={{
+            padding: 16,
+            background: "#111",
+            border: "1px solid #333",
+            borderRadius: 14,
+          }}
+        >
+          <div style={{ color: "#aaa" }}>En Çok Oy</div>
+          <strong style={{ fontSize: 26 }}>{maxVotes}</strong>
+        </div>
+      </div>
 
       <section
         style={{
@@ -993,63 +1185,6 @@ alert("Ayarlar kaydedildi ✅");
         </div>
       </section>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 14,
-          marginTop: 24,
-        }}
-      >
-        <div
-          style={{
-            padding: 16,
-            background: "#111",
-            border: "1px solid #333",
-            borderRadius: 14,
-          }}
-        >
-          <div style={{ color: "#aaa" }}>Toplam İstek</div>
-          <strong style={{ fontSize: 26 }}>{songs.length}</strong>
-        </div>
-
-        <div
-          style={{
-            padding: 16,
-            background: "#111",
-            border: "1px solid #333",
-            borderRadius: 14,
-          }}
-        >
-          <div style={{ color: "#aaa" }}>Bekleyen</div>
-          <strong style={{ fontSize: 26 }}>{pendingSongs.length}</strong>
-        </div>
-
-        <div
-          style={{
-            padding: 16,
-            background: "#111",
-            border: "1px solid #333",
-            borderRadius: 14,
-          }}
-        >
-          <div style={{ color: "#aaa" }}>Çalınan</div>
-          <strong style={{ fontSize: 26 }}>{playedSongs.length}</strong>
-        </div>
-
-        <div
-          style={{
-            padding: 16,
-            background: "#111",
-            border: "1px solid #333",
-            borderRadius: 14,
-          }}
-        >
-          <div style={{ color: "#aaa" }}>En Çok Oy</div>
-          <strong style={{ fontSize: 26 }}>{maxVotes}</strong>
-        </div>
-      </div>
-
       <section
         style={{
           marginTop: 28,
@@ -1167,64 +1302,6 @@ alert("Ayarlar kaydedildi ✅");
         </div>
       </section>
 
-      <section
-        style={{
-          marginTop: 35,
-          padding: 28,
-          background: "linear-gradient(135deg,#111,#1f1f1f)",
-          borderRadius: 20,
-          border: "1px solid #333",
-          boxShadow: "0 0 35px rgba(255,0,200,0.25)",
-        }}
-      >
-        <h2 style={{ color: "#22c55e", marginBottom: 12 }}>
-  🔥 En Son Çalan
-</h2>
-        {nowPlaying ? (
-          <SongCard song={nowPlaying} compact />
-        ) : (
-          <p style={{ color: "#777" }}>Henüz çalan şarkı yok.</p>
-        )}
-      </section>
-
-      <div
-        style={{
-          marginTop: 40,
-          display: "grid",
-          gridTemplateColumns: "2fr 1fr",
-          gap: 24,
-          alignItems: "start",
-        }}
-      >
-        <section>
-          <h2 style={{ color: "#a78bfa" }}>⏭️ Sıradakiler</h2>
-
-          {pendingSongs.length === 0 && (
-            <p style={{ color: "#777" }}>Bekleyen istek yok.</p>
-          )}
-
-          {pendingSongs.map((song, index) => (
-            <SongCard
-              key={song.id}
-              song={song}
-              index={index}
-              isNew={song.id === newSongId}
-            />
-          ))}
-        </section>
-
-        <section>
-          <h2 style={{ color: "#f472b6" }}>✅ Çalınan Geçmişi</h2>
-
-          {playedSongs.length === 0 && (
-            <p style={{ color: "#777" }}>Henüz çalınan yok.</p>
-          )}
-
-          {playedSongs.map((song) => (
-            <SongCard key={song.id} song={song} compact />
-          ))}
-        </section>
-      </div>
     </main>
   );
 }

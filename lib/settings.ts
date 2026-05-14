@@ -16,6 +16,7 @@ export type AppSettings = {
   daily_request_limit: string;
   clear_history_on_reset: string;
   safe_search: string;
+  allow_song_messages: string;
 };
 
 export const defaultSettings: AppSettings = {
@@ -34,6 +35,7 @@ export const defaultSettings: AppSettings = {
   daily_request_limit: "10",
   clear_history_on_reset: "false",
   safe_search: "strict",
+  allow_song_messages: "true",
 };
 
 export async function getSettings() {
