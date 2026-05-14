@@ -32,6 +32,7 @@ export default function AdminPage() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [showSettings, setShowSettings] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedSongLinkId, setCopiedSongLinkId] = useState<number | null>(null);
 
   const previousIds = useRef<number[]>([]);
   const customerUrl = "https://qrjam.vercel.app";
@@ -194,6 +195,20 @@ export default function AdminPage() {
 
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 1800);
+  };
+
+  const copySongLink = async (youtubeUrl: string, songId: number) => {
+    try {
+      await navigator.clipboard.writeText(youtubeUrl);
+      setCopiedSongLinkId(songId);
+      setTimeout(() => {
+        setCopiedSongLinkId((currentSongId) =>
+          currentSongId === songId ? null : currentSongId
+        );
+      }, 1800);
+    } catch {
+      setCopiedSongLinkId(null);
+    }
   };
 
   const downloadQrPng = () => {
@@ -463,6 +478,8 @@ export default function AdminPage() {
     compact?: boolean;
   }) => {
     const deviceRequestCount = getDeviceRequestCount(song.device_id);
+    const youtubeUrl = song.youtube_url;
+    const isSongLinkCopied = copiedSongLinkId === song.id;
 
     return (
     <div
@@ -512,9 +529,9 @@ export default function AdminPage() {
           <strong>
             {isNew ? "🆕 " : ""}
             {index !== undefined ? `${index + 1}. ` : ""}
-            {song.youtube_url ? (
+            {youtubeUrl ? (
               <a
-                href={song.youtube_url}
+                href={youtubeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: "white", textDecoration: "none" }}
@@ -590,54 +607,153 @@ export default function AdminPage() {
       </div>
 
       {!compact && (
-        <div>
-          <button
-            onClick={() => markPlayed(song)}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 8,
+            minWidth: youtubeUrl ? 220 : undefined,
+          }}
+        >
+          <div
             style={{
-              padding: "10px 15px",
-              background: "linear-gradient(90deg,#16a34a,#22c55e)",
-              color: "white",
-              border: "none",
-              borderRadius: 10,
-              fontWeight: "bold",
-              cursor: "pointer",
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 10,
+              flexWrap: "wrap",
             }}
           >
-            Çal
-          </button>
+            {youtubeUrl && (
+              <button
+                onClick={() => copySongLink(youtubeUrl, song.id)}
+                style={{
+                  padding: "10px 15px",
+                  background: isSongLinkCopied
+                    ? "linear-gradient(90deg,#16a34a,#22c55e)"
+                    : "#181818",
+                  color: "white",
+                  border: isSongLinkCopied
+                    ? "1px solid #22c55e"
+                    : "1px solid #444",
+                  borderRadius: 10,
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                }}
+              >
+                🔗 Linki Kopyala
+              </button>
+            )}
 
-          <button
-            onClick={() => deleteSong(song.id)}
-            style={{
-              marginLeft: 10,
-              padding: "10px 15px",
-              background: "linear-gradient(90deg,#dc2626,#ef4444)",
-              color: "white",
-              border: "none",
-              borderRadius: 10,
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            Sil
-          </button>
+            <button
+              onClick={() => markPlayed(song)}
+              style={{
+                padding: "10px 15px",
+                background: "linear-gradient(90deg,#16a34a,#22c55e)",
+                color: "white",
+                border: "none",
+                borderRadius: 10,
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+            >
+              Çal
+            </button>
+
+            <button
+              onClick={() => deleteSong(song.id)}
+              style={{
+                padding: "10px 15px",
+                background: "linear-gradient(90deg,#dc2626,#ef4444)",
+                color: "white",
+                border: "none",
+                borderRadius: 10,
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+            >
+              Sil
+            </button>
+          </div>
+
+          {isSongLinkCopied && (
+            <div
+              style={{
+                padding: "6px 10px",
+                background: "rgba(34,197,94,0.14)",
+                border: "1px solid rgba(34,197,94,0.35)",
+                borderRadius: 999,
+                color: "#86efac",
+                fontSize: 12,
+                fontWeight: "bold",
+              }}
+            >
+              Link kopyalandı ✅
+            </div>
+          )}
         </div>
       )}
 
       {compact && (
-        <button
-          onClick={() => undoPlayed(song)}
+        <div
           style={{
-            padding: "8px 12px",
-            background: "#333",
-            color: "white",
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 8,
           }}
         >
-          Geri Al
-        </button>
+          {youtubeUrl && (
+            <button
+              onClick={() => copySongLink(youtubeUrl, song.id)}
+              style={{
+                padding: "8px 12px",
+                background: isSongLinkCopied
+                  ? "linear-gradient(90deg,#16a34a,#22c55e)"
+                  : "#181818",
+                color: "white",
+                border: isSongLinkCopied
+                  ? "1px solid #22c55e"
+                  : "1px solid #444",
+                borderRadius: 8,
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+            >
+              🔗 Linki Kopyala
+            </button>
+          )}
+
+          <button
+            onClick={() => undoPlayed(song)}
+            style={{
+              padding: "8px 12px",
+              background: "#333",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              cursor: "pointer",
+            }}
+          >
+            Geri Al
+          </button>
+
+          {isSongLinkCopied && (
+            <div
+              style={{
+                padding: "6px 10px",
+                background: "rgba(34,197,94,0.14)",
+                border: "1px solid rgba(34,197,94,0.35)",
+                borderRadius: 999,
+                color: "#86efac",
+                fontSize: 12,
+                fontWeight: "bold",
+              }}
+            >
+              Link kopyalandı ✅
+            </div>
+          )}
+        </div>
       )}
     </div>
     );
