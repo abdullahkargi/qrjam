@@ -17,6 +17,7 @@ export type AppSettings = {
   clear_history_on_reset: string;
   safe_search: string;
   allow_song_messages: string;
+  request_closed_message: string;
 };
 
 export const defaultSettings: AppSettings = {
@@ -36,6 +37,7 @@ export const defaultSettings: AppSettings = {
   clear_history_on_reset: "false",
   safe_search: "strict",
   allow_song_messages: "true",
+  request_closed_message: "DJ birazdan tekrar istekleri açacak.",
 };
 
 export async function getSettings() {

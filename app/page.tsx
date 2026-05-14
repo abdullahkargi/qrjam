@@ -523,7 +523,7 @@ if (latestSettings.youtube_enabled !== "true") {
                   fontSize: 17,
                 }}
               >
-                DJ birazdan tekrar istekleri açacak.
+                {settings.request_closed_message}
               </p>
             </div>
           </section>
@@ -778,22 +778,6 @@ if (latestSettings.youtube_enabled !== "true") {
                   {song.youtube_channel && (
                     <div style={{ color: "#aaa", marginTop: 3 }}>
                       {song.youtube_channel}
-                    </div>
-                  )}
-                  {song.song_message && (
-                    <div
-                      style={{
-                        marginTop: 8,
-                        padding: "8px 10px",
-                        background: "rgba(124,58,237,0.14)",
-                        border: "1px solid rgba(167,139,250,0.28)",
-                        borderRadius: 10,
-                        color: "#e9d5ff",
-                        fontSize: 13,
-                        overflowWrap: "anywhere",
-                      }}
-                    >
-                      💬 {song.song_message}
                     </div>
                   )}
                   {song.status === "played" && <span>✅ Çalındı</span>}

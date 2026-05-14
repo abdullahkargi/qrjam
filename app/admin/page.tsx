@@ -895,6 +895,7 @@ export default function AdminPage() {
                   {key === "theme_color" && "purple / green / gold / red"}
                   {key === "blacklist" && "Virgülle ayır"}
                   {key === "welcome_message" && "Karşılama mesajı"}
+                  {key === "request_closed_message" && "İstek kapalı ekranı mesajı"}
                   {key === "voting_enabled" && "true / false"}
                   {key === "youtube_enabled" && "YouTube açık mı"}
                   {key === "allow_duplicate_songs" && "Aynı şarkı tekrar"}
