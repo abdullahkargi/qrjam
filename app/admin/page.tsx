@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import QRCode from "react-qr-code";
 import { supabase } from "../../lib/supabase";
 import {
   AppSettings,
@@ -28,8 +29,10 @@ export default function AdminPage() {
   const [newSongId, setNewSongId] = useState<number | null>(null);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [showSettings, setShowSettings] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const previousIds = useRef<number[]>([]);
+  const customerUrl = "https://qrjam.vercel.app";
 
   const loadSettings = async () => {
     const loadedSettings = await getSettings();
@@ -170,6 +173,74 @@ export default function AdminPage() {
     } else {
       document.exitFullscreen();
     }
+  };
+
+  const copyCustomerLink = async () => {
+    try {
+      await navigator.clipboard.writeText(customerUrl);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = customerUrl;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 1800);
+  };
+
+  const downloadQrPng = () => {
+    const svg = document.getElementById("customer-qr-code");
+    if (!(svg instanceof SVGSVGElement)) return;
+
+    const serializer = new XMLSerializer();
+    const svgBlob = new Blob([serializer.serializeToString(svg)], {
+      type: "image/svg+xml;charset=utf-8",
+    });
+    const objectUrl = URL.createObjectURL(svgBlob);
+    const image = new Image();
+
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      const size = 1024;
+      const padding = 96;
+      canvas.width = size;
+      canvas.height = size;
+
+      const context = canvas.getContext("2d");
+      if (!context) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, size, size);
+      context.drawImage(
+        image,
+        padding,
+        padding,
+        size - padding * 2,
+        size - padding * 2
+      );
+
+      URL.revokeObjectURL(objectUrl);
+
+      const pngUrl = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.href = pngUrl;
+      link.download = "qrjam-musteri-qr.png";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    image.onerror = () => URL.revokeObjectURL(objectUrl);
+    image.src = objectUrl;
   };
 
   const getThemeBackground = () => {
@@ -753,6 +824,123 @@ alert("Ayarlar kaydedildi ✅");
           <strong style={{ fontSize: 26 }}>{maxVotes}</strong>
         </div>
       </div>
+
+      <section
+        style={{
+          marginTop: 28,
+          padding: 26,
+          background:
+            "linear-gradient(135deg,rgba(17,17,17,0.96),rgba(31,31,31,0.94))",
+          borderRadius: 20,
+          border: "1px solid rgba(167,139,250,0.35)",
+          boxShadow:
+            "0 0 34px rgba(124,58,237,0.28), inset 0 0 28px rgba(34,197,94,0.04)",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "260px 1fr",
+            gap: 26,
+            alignItems: "center",
+          }}
+        >
+          <div
+            style={{
+              padding: 18,
+              background: "#fff",
+              borderRadius: 18,
+              boxShadow: "0 0 28px rgba(34,197,94,0.35)",
+            }}
+          >
+            <QRCode
+              id="customer-qr-code"
+              value={customerUrl}
+              size={224}
+              level="H"
+              bgColor="#ffffff"
+              fgColor="#050505"
+              style={{
+                display: "block",
+                height: "auto",
+                maxWidth: "100%",
+                width: "100%",
+              }}
+              viewBox="0 0 256 256"
+            />
+          </div>
+
+          <div>
+            <h2
+              style={{
+                margin: 0,
+                color: "#a78bfa",
+                fontSize: 28,
+              }}
+            >
+              QR Code Generator
+            </h2>
+
+            <div
+              style={{
+                marginTop: 14,
+                padding: 14,
+                background: "#090909",
+                border: "1px solid #2a2a2a",
+                borderRadius: 14,
+                color: "#e5e7eb",
+                wordBreak: "break-all",
+              }}
+            >
+              {customerUrl}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                flexWrap: "wrap",
+                marginTop: 18,
+              }}
+            >
+              <button
+                onClick={downloadQrPng}
+                style={{
+                  padding: "13px 17px",
+                  background: "linear-gradient(90deg,#7c3aed,#22c55e)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 12,
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                  boxShadow: "0 0 18px rgba(124,58,237,0.35)",
+                }}
+              >
+                QR İndir (PNG)
+              </button>
+
+              <button
+                onClick={copyCustomerLink}
+                style={{
+                  padding: "13px 17px",
+                  background: copiedLink
+                    ? "linear-gradient(90deg,#16a34a,#22c55e)"
+                    : "#181818",
+                  color: "white",
+                  border: copiedLink
+                    ? "1px solid #22c55e"
+                    : "1px solid #444",
+                  borderRadius: 12,
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                }}
+              >
+                {copiedLink ? "Kopyalandı" : "Linki Kopyala"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section
         style={{
