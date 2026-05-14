@@ -152,38 +152,6 @@ export default function AdminPage() {
     fetchSongs();
   };
 
-  const approveSong = async (song: Song) => {
-    const approvedSong: Song = {
-      ...song,
-      status: "pending",
-      played_at: undefined,
-    };
-
-    setSongs((currentSongs) =>
-      currentSongs.map((item) => (item.id === song.id ? approvedSong : item))
-    );
-
-    if (settings.new_request_animation === "true") {
-      setNewSongId(song.id);
-      setTimeout(() => setNewSongId(null), 3000);
-    }
-
-    await supabase
-      .from("songs")
-      .update({
-        status: "pending",
-        played_at: null,
-      })
-      .eq("id", song.id);
-
-    fetchSongs();
-  };
-
-  const rejectSong = async (id: number) => {
-    await supabase.from("songs").delete().eq("id", id);
-    fetchSongs();
-  };
-
   const resetNight = async () => {
     const confirmReset = confirm("Tüm şarkılar silinsin mi?");
     if (!confirmReset) return;
@@ -361,14 +329,6 @@ export default function AdminPage() {
     .filter((s) => s.status === "pending")
     .sort((a, b) => b.votes - a.votes);
 
-  const waitingApprovalSongs = songs
-    .filter((s) => s.status === "waiting_approval")
-    .sort(
-      (a, b) =>
-        new Date(b.created_at || "").getTime() -
-        new Date(a.created_at || "").getTime()
-    );
-
   const playedSongs = songs
     .filter((s) => s.status === "played")
     .sort(
@@ -379,6 +339,100 @@ export default function AdminPage() {
 
   const maxVotes =
     songs.length > 0 ? Math.max(...songs.map((song) => song.votes)) : 0;
+
+  const today = new Date();
+  const isToday = (date?: string) => {
+    if (!date) return false;
+
+    const parsedDate = new Date(date);
+    return (
+      parsedDate.getFullYear() === today.getFullYear() &&
+      parsedDate.getMonth() === today.getMonth() &&
+      parsedDate.getDate() === today.getDate()
+    );
+  };
+
+  const todaySongs = songs.filter((song) => isToday(song.created_at));
+  const todayPlayedSongs = songs.filter(
+    (song) => song.status === "played" && isToday(song.played_at)
+  );
+  const totalVotes = songs.reduce((total, song) => total + song.votes, 0);
+  const topVotedSong =
+    songs.length > 0
+      ? [...songs].sort((a, b) => b.votes - a.votes)[0]
+      : null;
+  const newestSong =
+    songs.length > 0
+      ? [...songs].sort(
+          (a, b) =>
+            new Date(b.created_at || "").getTime() -
+            new Date(a.created_at || "").getTime()
+        )[0]
+      : null;
+
+  const hourlyRequestCounts = todaySongs.reduce<Record<number, number>>(
+    (hours, song) => {
+      if (!song.created_at) return hours;
+
+      const hour = new Date(song.created_at).getHours();
+      hours[hour] = (hours[hour] || 0) + 1;
+      return hours;
+    },
+    {}
+  );
+  const activeHour = Object.entries(hourlyRequestCounts).sort(
+    ([, firstCount], [, secondCount]) => secondCount - firstCount
+  )[0];
+  const activeHourLabel = activeHour
+    ? `${activeHour[0].padStart(2, "0")}:00 - ${String(
+        (Number(activeHour[0]) + 1) % 24
+      ).padStart(2, "0")}:00`
+    : "Veri yok";
+
+  const analyticsCards = [
+    {
+      label: "Bugün Toplam İstek",
+      value: todaySongs.length,
+      detail: "created_at verisine göre",
+      color: "#22c55e",
+      glow: "rgba(34,197,94,0.22)",
+    },
+    {
+      label: "Toplam Oy",
+      value: totalVotes,
+      detail: "tüm şarkılardaki oylar",
+      color: "#a78bfa",
+      glow: "rgba(167,139,250,0.24)",
+    },
+    {
+      label: "En Çok Oy Alan",
+      value: topVotedSong ? topVotedSong.name : "Yok",
+      detail: topVotedSong ? `${topVotedSong.votes} oy` : "henüz şarkı yok",
+      color: "#f472b6",
+      glow: "rgba(244,114,182,0.22)",
+    },
+    {
+      label: "En Son Eklenen",
+      value: newestSong ? newestSong.name : "Yok",
+      detail: newestSong?.youtube_channel || "son kayıt",
+      color: "#38bdf8",
+      glow: "rgba(56,189,248,0.20)",
+    },
+    {
+      label: "Bugün Çalınan",
+      value: todayPlayedSongs.length,
+      detail: "played_at verisine göre",
+      color: "#f59e0b",
+      glow: "rgba(245,158,11,0.20)",
+    },
+    {
+      label: "En Aktif Saat",
+      value: activeHourLabel,
+      detail: activeHour ? `${activeHour[1]} istek` : "bugün veri yok",
+      color: "#fb7185",
+      glow: "rgba(251,113,133,0.20)",
+    },
+  ];
 
   const SongCard = ({
     song,
@@ -808,6 +862,137 @@ alert("Ayarlar kaydedildi ✅");
         </section>
       )}
 
+      <section
+        style={{
+          marginTop: 28,
+          padding: 24,
+          background:
+            "linear-gradient(135deg,rgba(17,17,17,0.96),rgba(23,15,36,0.94))",
+          border: "1px solid rgba(167,139,250,0.28)",
+          borderRadius: 20,
+          boxShadow:
+            "0 0 34px rgba(124,58,237,0.22), inset 0 0 26px rgba(34,197,94,0.04)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
+            marginBottom: 18,
+          }}
+        >
+          <h2
+            style={{
+              margin: 0,
+              color: "#e9d5ff",
+              fontSize: 28,
+            }}
+          >
+            📊 Analytics Dashboard
+          </h2>
+
+          <span
+            style={{
+              padding: "8px 12px",
+              background: "rgba(34,197,94,0.10)",
+              border: "1px solid rgba(34,197,94,0.35)",
+              borderRadius: 999,
+              color: "#86efac",
+              fontWeight: "bold",
+              fontSize: 13,
+            }}
+          >
+            Canlı Veriler
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+            gap: 14,
+          }}
+        >
+          {analyticsCards.map((card) => (
+            <div
+              key={card.label}
+              style={{
+                minHeight: 140,
+                padding: 16,
+                background:
+                  "linear-gradient(145deg,rgba(5,5,5,0.96),rgba(21,21,21,0.92))",
+                border: `1px solid ${card.color}55`,
+                borderRadius: 16,
+                boxShadow: `0 0 24px ${card.glow}`,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <span
+                  style={{
+                    color: "#aaa",
+                    fontSize: 13,
+                    fontWeight: "bold",
+                    textTransform: "uppercase",
+                    letterSpacing: 0,
+                  }}
+                >
+                  {card.label}
+                </span>
+
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    minWidth: 10,
+                    borderRadius: "50%",
+                    background: card.color,
+                    boxShadow: `0 0 16px ${card.color}`,
+                  }}
+                />
+              </div>
+
+              <strong
+                style={{
+                  marginTop: 14,
+                  color: "white",
+                  fontSize: typeof card.value === "number" ? 34 : 22,
+                  lineHeight: 1.12,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {card.value}
+              </strong>
+
+              <div
+                style={{
+                  marginTop: 12,
+                  color: card.color,
+                  fontSize: 13,
+                  fontWeight: "bold",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {card.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div
         style={{
           display: "grid",
@@ -864,145 +1049,6 @@ alert("Ayarlar kaydedildi ✅");
           <strong style={{ fontSize: 26 }}>{maxVotes}</strong>
         </div>
       </div>
-
-      <section
-        style={{
-          marginTop: 28,
-          padding: 26,
-          background:
-            "linear-gradient(135deg,rgba(17,17,17,0.98),rgba(28,18,40,0.92))",
-          borderRadius: 20,
-          border: "1px solid rgba(244,114,182,0.35)",
-          boxShadow:
-            "0 0 34px rgba(244,114,182,0.20), inset 0 0 28px rgba(124,58,237,0.08)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          <h2 style={{ color: "#f472b6", margin: 0 }}>
-            🛂 Onay Bekleyenler
-          </h2>
-
-          <span
-            style={{
-              padding: "8px 12px",
-              background: "rgba(244,114,182,0.12)",
-              border: "1px solid rgba(244,114,182,0.35)",
-              borderRadius: 999,
-              color: "#f9a8d4",
-              fontWeight: "bold",
-            }}
-          >
-            {waitingApprovalSongs.length} istek
-          </span>
-        </div>
-
-        {waitingApprovalSongs.length === 0 && (
-          <p style={{ color: "#777", marginBottom: 0 }}>
-            Onay bekleyen istek yok.
-          </p>
-        )}
-
-        {waitingApprovalSongs.map((song) => (
-          <div
-            key={song.id}
-            style={{
-              marginTop: 14,
-              padding: 16,
-              background:
-                "linear-gradient(90deg,rgba(35,25,66,0.95),rgba(17,17,17,0.96))",
-              border: "1px solid rgba(167,139,250,0.35)",
-              borderRadius: 16,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 16,
-              boxShadow: "0 0 22px rgba(124,58,237,0.18)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {song.thumbnail && (
-                <img
-                  src={song.thumbnail}
-                  alt={song.name}
-                  style={{
-                    width: 96,
-                    height: 72,
-                    objectFit: "cover",
-                    borderRadius: 12,
-                  }}
-                />
-              )}
-
-              <div>
-                <strong>
-                  {song.youtube_url ? (
-                    <a
-                      href={song.youtube_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: "white", textDecoration: "none" }}
-                    >
-                      ▶️ {song.name}
-                    </a>
-                  ) : (
-                    <>🎵 {song.name}</>
-                  )}
-                </strong>
-
-                {song.youtube_channel && (
-                  <div style={{ color: "#aaa", marginTop: 4 }}>
-                    {song.youtube_channel}
-                  </div>
-                )}
-
-                <div style={{ color: "#f9a8d4", marginTop: 6 }}>
-                  Admin onayı bekliyor
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                onClick={() => approveSong(song)}
-                style={{
-                  padding: "10px 15px",
-                  background: "linear-gradient(90deg,#16a34a,#22c55e)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 10,
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                }}
-              >
-                ✅ Onayla
-              </button>
-
-              <button
-                onClick={() => rejectSong(song.id)}
-                style={{
-                  padding: "10px 15px",
-                  background: "linear-gradient(90deg,#991b1b,#ef4444)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 10,
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                }}
-              >
-                ❌ Reddet
-              </button>
-            </div>
-          </div>
-        ))}
-      </section>
 
       <section
         style={{
