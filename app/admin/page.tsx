@@ -764,8 +764,9 @@ alert("Ayarlar kaydedildi ✅");
           boxShadow: "0 0 35px rgba(255,0,200,0.25)",
         }}
       >
-        <h2 style={{ color: "#22c55e", marginBottom: 12 }}>🔥 Şu An Çalan</h2>
-
+        <h2 style={{ color: "#22c55e", marginBottom: 12 }}>
+  🔥 En Son Çalan
+</h2>
         {nowPlaying ? (
           <SongCard song={nowPlaying} compact />
         ) : (
