@@ -328,6 +328,21 @@ export default function Home() {
           {settings.welcome_message}
         </p>
 
+{settings.youtube_enabled !== "true" && (
+  <div
+    style={{
+      marginTop: 25,
+      padding: 18,
+      background: "linear-gradient(90deg,#7f1d1d,#111)",
+      border: "1px solid #ef4444",
+      borderRadius: 16,
+      color: "white",
+      fontWeight: "bold",
+    }}
+  >
+    🚫 Şu anda istek alamıyoruz.
+  </div>
+)}
         <div
           style={{
             marginTop: 28,

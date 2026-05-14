@@ -547,9 +547,7 @@ export default function AdminPage() {
         [key]: e.target.value,
       }))
     }
-    onBlur={(e) =>
-      saveSetting(key as keyof AppSettings, e.target.value)
-    }
+    
     style={{
       width: "100%",
       minHeight: 90,
@@ -639,9 +637,7 @@ export default function AdminPage() {
         [key]: e.target.value,
       }))
     }
-    onBlur={(e) =>
-      saveSetting(key as keyof AppSettings, e.target.value)
-    }
+    
     style={{
       width: "100%",
       padding: 12,
@@ -674,9 +670,29 @@ export default function AdminPage() {
             ))}
           </div>
 
-          <p style={{ color: "#22c55e", marginTop: 20, fontWeight: "bold" }}>
-            ✅ Değişiklikler otomatik kaydedilir.
-          </p>
+<button
+  onClick={async () => {
+    for (const [key, value] of Object.entries(settings)) {
+      await saveSetting(key as keyof AppSettings, value);
+    }
+
+    window.location.reload();
+  }}
+  style={{
+    marginTop: 22,
+    padding: "14px 18px",
+    width: "100%",
+    background: "linear-gradient(90deg,#16a34a,#22c55e)",
+    color: "white",
+    border: "none",
+    borderRadius: 14,
+    fontWeight: "bold",
+    cursor: "pointer",
+    fontSize: 16,
+  }}
+>
+  💾 Kaydet ve Sayfayı Yenile
+</button>
         </section>
       )}
 
