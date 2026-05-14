@@ -53,7 +53,11 @@ export default function Home() {
     }
 
     if (data) {
-      const sorted = data.sort((a, b) => {
+      const visibleSongs = data.filter(
+        (song) => song.status !== "waiting_approval"
+      );
+
+      const sorted = visibleSongs.sort((a, b) => {
         if (a.status === "pending" && b.status === "played") return -1;
         if (a.status === "played" && b.status === "pending") return 1;
         return b.votes - a.votes;
@@ -220,7 +224,11 @@ if (latestSettings.youtube_enabled !== "true") {
       .maybeSingle();
 
     if (existing && settings.allow_duplicate_songs !== "true") {
-      setMessage("Bu şarkı zaten listede. Yanındaki 👍 butonuyla oy verebilirsin.");
+      setMessage(
+        existing.status === "waiting_approval"
+          ? "Bu şarkı admin onayı bekliyor."
+          : "Bu şarkı zaten listede. Yanındaki 👍 butonuyla oy verebilirsin."
+      );
       return;
     }
 
@@ -228,7 +236,7 @@ if (latestSettings.youtube_enabled !== "true") {
       {
         name: selectedVideo.title,
         votes: 1,
-        status: "pending",
+        status: "waiting_approval",
         youtube_url: selectedVideo.url,
         youtube_channel: selectedVideo.channel,
         thumbnail: selectedVideo.thumbnail,
@@ -244,7 +252,7 @@ if (latestSettings.youtube_enabled !== "true") {
     localStorage.setItem("lastRequestTime", String(now));
     increaseDailyCount();
 
-    setMessage("Şarkın sıraya alındı 🎧");
+    setMessage("Şarkın admin onayına gönderildi 🎧");
     setQuery("");
     setVideos([]);
     setSelectedVideo(null);
