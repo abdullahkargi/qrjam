@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import {
   AppSettings,
@@ -40,6 +40,8 @@ type NewSong = {
   device_id?: string;
 };
 
+type SubmitStatus = "idle" | "submitting" | "success" | "error";
+
 export default function Home() {
   const [query, setQuery] = useState("");
   const [videos, setVideos] = useState<YoutubeVideo[]>([]);
@@ -49,7 +51,10 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [cooldownLeft, setCooldownLeft] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<SubmitStatus>("idle");
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const submitLockRef = useRef(false);
 
   const cooldownMs = Number(settings.cooldown || "180") * 1000;
 
@@ -234,6 +239,16 @@ export default function Home() {
   };
 
   const addSong = async () => {
+    if (isSubmitting) return;
+    if (submitLockRef.current) return;
+
+    submitLockRef.current = true;
+    setIsSubmitting(true);
+    setSubmitStatus("submitting");
+
+    let shouldResetSubmitStatus = true;
+
+    try {
     const latestSettings = await getSettings();
 setSettings(latestSettings);
 
@@ -353,13 +368,17 @@ if (latestSettings.youtube_enabled !== "true") {
 
     if (error) {
       console.log("EKLEME HATASI:", error);
-      setMessage("Bir hata oldu, tekrar dene.");
+      setSubmitStatus("error");
+      setMessage("❌ Bir hata oldu, tekrar dene");
+      shouldResetSubmitStatus = false;
       return;
     }
 
     localStorage.setItem("lastRequestTime", String(now));
     increaseDailyCount();
 
+    setSubmitStatus("success");
+    shouldResetSubmitStatus = false;
     setMessage(
       cleanSongMessage && !messageSaved
         ? "Şarkın sıraya alındı 🎧 Mesaj için database migration gerekli."
@@ -371,6 +390,21 @@ if (latestSettings.youtube_enabled !== "true") {
     setSongMessage("");
     updateCooldown();
     fetchSongs();
+    } catch (error) {
+      console.log("EKLEME HATASI:", error);
+      setSubmitStatus("error");
+      setMessage("❌ Bir hata oldu, tekrar dene");
+      shouldResetSubmitStatus = false;
+    } finally {
+      submitLockRef.current = false;
+      setIsSubmitting(false);
+
+      if (shouldResetSubmitStatus) {
+        setSubmitStatus("idle");
+      } else {
+        setTimeout(() => setSubmitStatus("idle"), 1800);
+      }
+    }
   };
 
   const voteSong = async (song: Song) => {
@@ -406,6 +440,20 @@ if (latestSettings.youtube_enabled !== "true") {
   const minutes = Math.floor(secondsLeft / 60);
   const seconds = secondsLeft % 60;
   const requestsOpen = settings.youtube_enabled === "true";
+  const submitButtonDisabled =
+    isSubmitting || submitStatus !== "idle" || cooldownLeft > 0;
+  const submitButtonText =
+    submitStatus === "submitting"
+      ? "⏳ Gönderiliyor..."
+      : submitStatus === "success"
+      ? "✅ Şarkın sıraya alındı"
+      : submitStatus === "error"
+      ? "❌ Bir hata oldu, tekrar dene"
+      : cooldownLeft > 0
+      ? `Tekrar göndermek için bekle: ${minutes}:${seconds
+          .toString()
+          .padStart(2, "0")}`
+      : "Seçilen Şarkıyı Gönder";
 
   return (
     <main
@@ -702,7 +750,7 @@ if (latestSettings.youtube_enabled !== "true") {
 
           <button
             onClick={addSong}
-            disabled={cooldownLeft > 0}
+            disabled={submitButtonDisabled}
             style={{
               marginTop: 16,
               padding: 15,
@@ -710,20 +758,16 @@ if (latestSettings.youtube_enabled !== "true") {
               borderRadius: 14,
               border: "none",
               background:
-                cooldownLeft > 0
+                submitButtonDisabled
                   ? "#333"
                   : "linear-gradient(90deg,#7c3aed,#6d28d9)",
               color: "white",
               fontWeight: "bold",
-              cursor: cooldownLeft > 0 ? "not-allowed" : "pointer",
+              cursor: submitButtonDisabled ? "not-allowed" : "pointer",
               fontSize: 16,
             }}
           >
-            {cooldownLeft > 0
-              ? `Tekrar göndermek için bekle: ${minutes}:${seconds
-                  .toString()
-                  .padStart(2, "0")}`
-              : "Seçilen Şarkıyı Gönder"}
+            {submitButtonText}
           </button>
 
           {message && (
